@@ -15,8 +15,11 @@ import java.util.Set;
 public class DpsCalculator extends BaseCalc {
 
     private static final double SECONDS_PER_TICK = 0.6;
+    private static final int[] CROSSBOW_WEAPON_IDS = {837, 767, 9174, 9176, 9177, 9179, 9181, 9183, 9185, 21902, 8880, 10156, 4734, 21012, 11785, 26374};
+    private static final int[] NO_AMMO_RANGED_WEAPON_IDS = {12924, 12926, 22547, 22550, 23983, 23985, 24123, 27652, 27655, 25862, 25865};
 
     private boolean usingSpecialAttack;
+    private int fangMinimumHit;
 
     public DpsCalculator(PlayerState player, MonsterStats monster) {
         super(player, monster);
@@ -44,22 +47,15 @@ public class DpsCalculator extends BaseCalc {
         int attackRoll = getMaxAttackRoll();
         int defenceRoll = getNpcDefenceRoll();
         double hitChance = calculateHitChance(attackRoll, defenceRoll);
-        int maxHit = getMaxHit();
+        int scalarMaxHit = getScalarMaxHit();
+        int maxHit = getDistributionMax(scalarMaxHit);
         int attackSpeed = getAttackSpeed();
-        
+
         double avgDamage;
-        
         if (isSunspearSpec()) {
-            avgDamage = hitChance * Math.floor(maxHit * 7 / 10.0);
-        } else if (isWearingScythe() && monster.getSize() >= 2) {
-            avgDamage = calculateScytheDps(hitChance, maxHit);
-        } else if (isWearingVeracs()) {
-            avgDamage = calculateVeracsDps(hitChance, maxHit, defenceRoll);
-        } else if (isWearingFang()) {
-            int minHit = (int) Math.floor(maxHit * 0.15);
-            avgDamage = hitChance * ((maxHit + minHit) / 2.0);
+            avgDamage = hitChance * Math.floor(scalarMaxHit * 7 / 10.0);
         } else {
-            avgDamage = hitChance * getAverageHit(maxHit);
+            avgDamage = getExpectedDamage(hitChance, scalarMaxHit);
         }
         
         double attacksPerSecond = 1.0 / (attackSpeed * SECONDS_PER_TICK);
@@ -112,6 +108,9 @@ public class DpsCalculator extends BaseCalc {
     }
 
     public int getMaxAttackRoll() {
+        if (isAmmoInvalid()) {
+            return 0;
+        }
         CombatStyle style = player.getCombatStyle();
         AttackType attackType = style.getAttackType();
 
@@ -361,7 +360,7 @@ public class DpsCalculator extends BaseCalc {
             additiveBonus += 15;
         }
 
-        if (isWearingSmokeStaff()) {
+        if (isWearingSmokeStaff() && isStandardSpellSelected()) {
             additiveBonus += 10;
         }
 
@@ -395,6 +394,10 @@ public class DpsCalculator extends BaseCalc {
             attackRoll = applyMagicSpecAttackRollBonus(attackRoll);
         }
 
+        if (isSpellElementMatchingWeakness()) {
+            attackRoll += applyFactor(baseRoll, monster.getWeaknessSeverity(), 100);
+        }
+
         return attackRoll;
     }
     
@@ -415,15 +418,16 @@ public class DpsCalculator extends BaseCalc {
         CombatStyle style = player.getCombatStyle();
         AttackType defenceStyle = getDefenceStyleForAttack(style.getAttackType());
         
+        ReducedMonsterStats reducedStats = getReducedMonsterStats();
         int defenceLevel;
         if (defenceStyle.isMagic() && !monster.usesDefenceForMagicDefence()) {
-            defenceLevel = monster.getMagicLevel();
+            defenceLevel = reducedStats.magicLevel;
         } else {
-            defenceLevel = monster.getDefenceLevel();
+            defenceLevel = reducedStats.defenceLevel;
         }
-        
+
         int effectiveLevel = defenceLevel + 9;
-        int defenceBonus = monster.getDefenceForStyle(defenceStyle.getKey()) + 64;
+        int defenceBonus = getReducedDefenceBonus(defenceStyle, reducedStats) + 64;
         int defenceRoll = effectiveLevel * defenceBonus;
         
         boolean isCustomMonster = monster.getId() == -1;
@@ -440,10 +444,147 @@ public class DpsCalculator extends BaseCalc {
         
         return defenceRoll;
     }
-    
+
+    private int getReducedDefenceBonus(AttackType defenceStyle, ReducedMonsterStats reducedStats) {
+        if (defenceStyle.isMagic()) {
+            return reducedStats.magicDefence;
+        }
+        return monster.getDefenceForStyle(defenceStyle.getKey());
+    }
+
+    private ReducedMonsterStats getReducedMonsterStats() {
+        ReducedMonsterStats stats = new ReducedMonsterStats(monster);
+        MonsterInputs.DefenceReductions reductions = monster.getInputs().getDefenceReductions();
+        int defenceFloor = getDefenceReductionFloor();
+
+        if (reductions.getAccursedSceptre() > 0) {
+            stats.defenceLevel = reduceDefenceToFloor(stats.defenceLevel * 17 / 20, defenceFloor);
+            stats.magicLevel = stats.magicLevel * 17 / 20;
+        } else if (reductions.getVulnerability() > 0) {
+            stats.defenceLevel = reduceDefenceToFloor(stats.defenceLevel * 9 / 10, defenceFloor);
+        }
+
+        for (int i = 0; i < reductions.getElderMaul(); i++) {
+            stats.defenceLevel = reduceDefenceToFloor(stats.defenceLevel - stats.defenceLevel * 35 / 100, defenceFloor);
+        }
+        for (int i = 0; i < reductions.getDwh(); i++) {
+            stats.defenceLevel = reduceDefenceToFloor(stats.defenceLevel - stats.defenceLevel * 3 / 10, defenceFloor);
+        }
+
+        applyDemonbaneReduction(stats, reductions.getArclight(), hasAttribute(MonsterAttribute.DEMON) ? 2 : 1, 20, defenceFloor);
+        applyDemonbaneReduction(stats, reductions.getEmberlight(), hasAttribute(MonsterAttribute.DEMON) ? 3 : 1, 20, defenceFloor);
+
+        for (int i = 0; i < reductions.getTonalztic(); i++) {
+            stats.defenceLevel = reduceDefenceToFloor(stats.defenceLevel - stats.magicLevel / 10, defenceFloor);
+        }
+
+        if (reductions.getSeercull() > 0) {
+            stats.magicLevel -= reductions.getSeercull();
+        }
+
+        applyBgsReduction(stats, reductions.getBgs(), defenceFloor);
+
+        if (reductions.getAyak() > 0 && stats.magicDefence > 0) {
+            stats.magicDefence = Math.max(0, stats.magicDefence - reductions.getAyak());
+        }
+
+        return stats;
+    }
+
+    private void applyDemonbaneReduction(ReducedMonsterStats stats, int count, int numerator, int denominator, int defenceFloor) {
+        if (count <= 0) {
+            return;
+        }
+        stats.attackLevel -= count * (monster.getAttackLevel() * numerator / denominator + 1);
+        stats.strengthLevel -= count * (monster.getStrengthLevel() * numerator / denominator + 1);
+        stats.defenceLevel = reduceDefenceToFloor(
+            stats.defenceLevel - count * (monster.getDefenceLevel() * numerator / denominator + 1),
+            defenceFloor
+        );
+    }
+
+    private void applyBgsReduction(ReducedMonsterStats stats, int damage, int defenceFloor) {
+        int remainingDamage = damage;
+        remainingDamage = reduceBgsDefence(stats, remainingDamage, defenceFloor);
+        remainingDamage = reduceBgsSkill(stats.strengthLevel, remainingDamage, value -> stats.strengthLevel = value);
+        remainingDamage = reduceBgsSkill(stats.attackLevel, remainingDamage, value -> stats.attackLevel = value);
+        remainingDamage = reduceBgsSkill(stats.magicLevel, remainingDamage, value -> stats.magicLevel = value);
+        reduceBgsSkill(stats.rangedLevel, remainingDamage, value -> stats.rangedLevel = value);
+    }
+
+    private int reduceBgsDefence(ReducedMonsterStats stats, int damage, int defenceFloor) {
+        if (damage <= 0) {
+            return 0;
+        }
+        int startLevel = stats.defenceLevel;
+        stats.defenceLevel = reduceDefenceToFloor(startLevel - damage, defenceFloor);
+        if (stats.defenceLevel > 0) {
+            return 0;
+        }
+        return damage - startLevel;
+    }
+
+    private int reduceBgsSkill(int startLevel, int damage, SkillSetter setter) {
+        if (damage <= 0) {
+            return 0;
+        }
+        int newLevel = startLevel - damage;
+        setter.set(newLevel);
+        if (newLevel > 0) {
+            return 0;
+        }
+        return damage - startLevel;
+    }
+
+    private int reduceDefenceToFloor(int value, int floor) {
+        return Math.max(floor, value);
+    }
+
+    private int getDefenceReductionFloor() {
+        int monsterId = monster.getId();
+        if (MonsterConstants.contains(MonsterConstants.VERZIK_IDS, monsterId) || MonsterConstants.contains(MonsterConstants.VARDORVIS_IDS, monsterId)) {
+            return monster.getDefenceLevel();
+        }
+        if (MonsterConstants.contains(MonsterConstants.SOTETSEG_IDS, monsterId)) return 100;
+        if (MonsterConstants.contains(MonsterConstants.NIGHTMARE_IDS, monsterId)) return 120;
+        if (MonsterConstants.contains(MonsterConstants.AKKHA_IDS, monsterId)) return 70;
+        if (MonsterConstants.contains(MonsterConstants.BABA_IDS, monsterId)) return 60;
+        if (MonsterConstants.contains(MonsterConstants.KEPHRI_UNSHIELDED_IDS, monsterId) || MonsterConstants.contains(MonsterConstants.KEPHRI_SHIELDED_IDS, monsterId)) return 60;
+        if (MonsterConstants.contains(MonsterConstants.ZEBAK_IDS, monsterId)) return 50;
+        if (MonsterConstants.contains(MonsterConstants.P3_WARDEN_IDS, monsterId)) return 120;
+        if (MonsterConstants.contains(MonsterConstants.TOA_OBELISK_IDS, monsterId)) return 60;
+        if (MonsterConstants.contains(MonsterConstants.NEX_IDS, monsterId)) return 250;
+        if (MonsterConstants.contains(MonsterConstants.ARAXXOR_IDS, monsterId)) return 90;
+        if (MonsterConstants.contains(MonsterConstants.HUEYCOATL_IDS, monsterId)) return 120;
+        if (MonsterConstants.contains(MonsterConstants.YAMA_IDS, monsterId)) return 145;
+        return 0;
+    }
+
+    private interface SkillSetter {
+        void set(int value);
+    }
+
+    private static class ReducedMonsterStats {
+        private int attackLevel;
+        private int strengthLevel;
+        private int defenceLevel;
+        private int magicLevel;
+        private int rangedLevel;
+        private int magicDefence;
+
+        private ReducedMonsterStats(MonsterStats monster) {
+            this.attackLevel = monster.getAttackLevel();
+            this.strengthLevel = monster.getStrengthLevel();
+            this.defenceLevel = monster.getDefenceLevel();
+            this.magicLevel = monster.getMagicLevel();
+            this.rangedLevel = monster.getRangedLevel();
+            this.magicDefence = monster.getMagicDefence();
+        }
+    }
+
     private AttackType getDefenceStyleForAttack(AttackType attackType) {
         if (!usingSpecialAttack) {
-            return attackType;
+            return attackType.isRanged() ? getRangedDefenceType() : attackType;
         }
         
         if (player.isWearingAny("Dragon claws", "Dragon dagger", "Dragon halberd", "Dragon longsword",
@@ -458,7 +599,21 @@ public class DpsCalculator extends BaseCalc {
             return AttackType.CRUSH;
         }
         
-        return attackType;
+        return attackType.isRanged() ? getRangedDefenceType() : attackType;
+    }
+
+    private AttackType getRangedDefenceType() {
+        String category = player.getWeaponCategory();
+        if ("Thrown".equals(category)) {
+            return AttackType.RANGED_LIGHT;
+        }
+        if ("Crossbow".equals(category) || "Chinchompa".equals(category)) {
+            return AttackType.RANGED_HEAVY;
+        }
+        if ("Salamander".equals(category)) {
+            return AttackType.RANGED_STANDARD;
+        }
+        return AttackType.RANGED_STANDARD;
     }
 
     public double calculateHitChance(int attackRoll, int defenceRoll) {
@@ -549,6 +704,13 @@ public class DpsCalculator extends BaseCalc {
     }
 
     public int getMaxHit() {
+        return getDistributionMax(getScalarMaxHit());
+    }
+
+    private int getScalarMaxHit() {
+        if (isAmmoInvalid()) {
+            return 0;
+        }
         CombatStyle style = player.getCombatStyle();
         AttackType attackType = style.getAttackType();
 
@@ -567,6 +729,7 @@ public class DpsCalculator extends BaseCalc {
     }
 
     private int getMeleeMaxHit() {
+        fangMinimumHit = 0;
         CombatStyle style = player.getCombatStyle();
         
         int baseLevel = player.getBoostedStrength();
@@ -682,10 +845,9 @@ public class DpsCalculator extends BaseCalc {
             }
         }
 
-        if (isWearingDharok()) {
-            int missingHp = player.getHitpointsLevel() - player.getCurrentHitpoints();
-            double dharokBonus = 1.0 + (missingHp * player.getHitpointsLevel()) / 10000.0;
-            maxHit = (int) Math.floor(maxHit * dharokBonus);
+        if (isWearingFang()) {
+            fangMinimumHit = applyFactor(maxHit, 3, 20);
+            maxHit -= fangMinimumHit;
         }
 
         if (usingSpecialAttack) {
@@ -846,9 +1008,10 @@ public class DpsCalculator extends BaseCalc {
             maxHit = applyFactor(maxHit, 13, 10);
         }
 
+        int baseMaxHit = maxHit;
         int magicDmgBonus = player.getEquipmentStats().getMagicDamage();
 
-        if (isWearingSmokeStaff()) {
+        if (isWearingSmokeStaff() && isStandardSpellSelected()) {
             magicDmgBonus += 100;
         }
         
@@ -862,6 +1025,12 @@ public class DpsCalculator extends BaseCalc {
             magicDmgBonus += player.isForinthrySurgeActive() ? 350 : 200;
         } else if (isWearingImbuedBlackMask() && player.isOnSlayerTask()) {
             blackMaskBonus = true;
+        }
+
+        for (Prayer prayer : player.getActivePrayers()) {
+            if (prayer.isMagicPrayer()) {
+                magicDmgBonus += prayer.getMagicDamageBonus();
+            }
         }
 
         maxHit = addFactor(maxHit, magicDmgBonus, 1000);
@@ -888,16 +1057,14 @@ public class DpsCalculator extends BaseCalc {
             maxHit = applyFactor(maxHit, 3, 2);
         }
 
-        if (player.isWearingAny("Tome of fire", "Tome of water", "Tome of earth")) {
+        if (isSpellElementMatchingWeakness()) {
+            maxHit += applyFactor(baseMaxHit, monster.getWeaknessSeverity(), 100);
+        }
+
+        if (isMatchingChargedTome()) {
             maxHit = applyFactor(maxHit, 11, 10);
         }
 
-        for (Prayer prayer : player.getActivePrayers()) {
-            if (prayer.isMagicPrayer()) {
-                maxHit = addFactor(maxHit, prayer.getMagicDamageBonus(), 100);
-            }
-        }
-        
         if (MonsterConstants.isP2Warden(monster.getId())) {
             maxHit = applyP2WardensMaxHitModifier(maxHit);
         }
@@ -907,6 +1074,9 @@ public class DpsCalculator extends BaseCalc {
 
     private int getBaseMagicMaxHit() {
         int magicLevel = player.getBoostedMagic();
+        if (player.getSpellName() != null) {
+            return getSelectedSpellMaxHit(magicLevel);
+        }
         String weapon = player.getWeaponName();
         
         if (weapon == null) return 0;
@@ -971,6 +1141,65 @@ public class DpsCalculator extends BaseCalc {
         
         return 0;
     }
+
+    private int getSelectedSpellMaxHit(int magicLevel) {
+        String spellName = player.getSpellName();
+        if (spellName == null) {
+            return 0;
+        }
+        if (spellName.endsWith(" Strike")) {
+            if (magicLevel >= 13) return 8;
+            if (magicLevel >= 9) return 6;
+            if (magicLevel >= 5) return 4;
+            return 2;
+        }
+        if (spellName.endsWith(" Bolt")) {
+            if (magicLevel >= 35) return 12;
+            if (magicLevel >= 29) return 11;
+            if (magicLevel >= 23) return 10;
+            return 9;
+        }
+        if (spellName.endsWith(" Blast")) {
+            if (magicLevel >= 59) return 16;
+            if (magicLevel >= 53) return 15;
+            if (magicLevel >= 47) return 14;
+            return 13;
+        }
+        if (spellName.endsWith(" Wave")) {
+            if (magicLevel >= 75) return 20;
+            if (magicLevel >= 70) return 19;
+            if (magicLevel >= 65) return 18;
+            return 17;
+        }
+        if (spellName.endsWith(" Surge")) {
+            if (magicLevel >= 95) return 24;
+            if (magicLevel >= 90) return 23;
+            if (magicLevel >= 85) return 22;
+            return 21;
+        }
+        return player.getSpellMaxHit();
+    }
+
+    private boolean isStandardSpellSelected() {
+        return "standard".equals(player.getSpellbook());
+    }
+
+    private boolean isSpellElementMatchingWeakness() {
+        return player.getSpellElement() != null
+            && monster.getWeaknessElement() != null
+            && player.getSpellElement().equals(monster.getWeaknessElement().getJsonName());
+    }
+
+    private boolean isMatchingChargedTome() {
+        if (!"Charged".equals(player.getShieldVersion())) {
+            return false;
+        }
+        String element = player.getSpellElement();
+        return element != null
+            && (player.isWearing("Tome of fire") && element.equals("fire")
+                || player.isWearing("Tome of water") && element.equals("water")
+                || player.isWearing("Tome of earth") && element.equals("earth"));
+    }
     
     private int applyP2WardensMaxHitModifier(int maxHit) {
         int defenceRoll = getNpcDefenceRoll();
@@ -983,6 +1212,432 @@ public class DpsCalculator extends BaseCalc {
         int maxPctRange = 20;
         
         return (maxHit * (modifier + maxPctRange)) / 100;
+    }
+
+    private int getDistributionMax(int scalarMaxHit) {
+        if (scalarMaxHit <= 0) {
+            return 0;
+        }
+        if (isImmune()) {
+            return 0;
+        }
+        int maxHit = scalarMaxHit;
+        if (isWearingVeracs()) {
+            maxHit = Math.max(maxHit, scalarMaxHit + 1);
+        }
+        if (isWearingScythe() && monster.getSize() >= 2) {
+            maxHit = transformAccurateDamage(scalarMaxHit) + transformAccurateDamage(scalarMaxHit / 2);
+            if (monster.getSize() >= 3) {
+                maxHit += transformAccurateDamage(scalarMaxHit / 4);
+            }
+            return maxHit;
+        }
+        if (isWearingDharok()) {
+            maxHit = getDharokScaledDamage(maxHit);
+        }
+        if (isUsingMeleeStyle() && isWearingKeris() && hasAttribute(MonsterAttribute.KALPHITE)) {
+            maxHit = Math.max(maxHit, scalarMaxHit * 3);
+        }
+        if (isVampyre()) {
+            maxHit = applyVampyreDamageScaling(maxHit);
+        }
+        if (isCorporealBeast() && !isWearingCorpbaneWeapon()) {
+            maxHit /= 2;
+        }
+        maxHit = applyStyleDamageReduction(maxHit);
+        if (isNonRubyBoltEffectApplicable()) {
+            maxHit = Math.max(maxHit, nonRubyBoltMax(scalarMaxHit));
+        }
+        if (isRubyBoltEffectApplicable()) {
+            maxHit = Math.max(maxHit, rubyBoltDamage());
+        }
+        return maxHit;
+    }
+
+    private double getExpectedDamage(double hitChance, int scalarMaxHit) {
+        if (scalarMaxHit <= 0) {
+            return 0;
+        }
+        double expected = transformedExpectedHit(hitChance, getMinimumHit(scalarMaxHit), scalarMaxHit);
+        if (isWearingVeracs()) {
+            expected = 0.75 * expected + 0.25 * transformedExpectedHit(1.0, 1, scalarMaxHit + 1);
+        }
+        if (isWearingScythe() && monster.getSize() >= 2) {
+            expected = transformedExpectedHit(hitChance, getMinimumHit(scalarMaxHit), scalarMaxHit);
+            expected += transformedExpectedHit(hitChance, getMinimumHit(scalarMaxHit), scalarMaxHit / 2);
+            if (monster.getSize() >= 3) {
+                expected += transformedExpectedHit(hitChance, getMinimumHit(scalarMaxHit), scalarMaxHit / 4);
+            }
+        }
+        if (isUsingMeleeStyle() && isWearingKeris() && hasAttribute(MonsterAttribute.KALPHITE)) {
+            double standard = transformedExpectedHit(hitChance, getMinimumHit(scalarMaxHit), scalarMaxHit);
+            double tripleDamageProc = transformedTripleDamageExpectedHit(hitChance, getMinimumHit(scalarMaxHit), scalarMaxHit);
+            expected = standard * 50.0 / 51.0 + tripleDamageProc / 51.0;
+        }
+        if (isNonRubyBoltEffectApplicable()) {
+            expected = nonRubyBoltExpectedDamage(expected, hitChance, scalarMaxHit);
+        }
+        if (isRubyBoltEffectApplicable()) {
+            double rubyExpected = rubyBoltDamage();
+            double rubyChance = 0.06 * (player.isKandarinDiary() ? 1.1 : 1.0);
+            if (isZaryteCrossbowSpec()) {
+                expected = (hitChance + (1.0 - hitChance) * rubyChance) * rubyExpected;
+            } else {
+                expected = rubyExpected * rubyChance + expected * (1.0 - rubyChance);
+            }
+        }
+        return expected;
+    }
+
+    private double transformedTripleDamageExpectedHit(double hitChance, int minHit, int maxHit) {
+        if (maxHit < minHit || maxHit < 0) {
+            return 0;
+        }
+        double expected = 0;
+        double probability = hitChance / (maxHit - minHit + 1);
+        for (int damage = minHit; damage <= maxHit; damage++) {
+            expected += probability * transformAccurateDamage(damage * 3);
+        }
+        return expected;
+    }
+
+    private double transformedExpectedHit(double hitChance, int minHit, int maxHit) {
+        if (maxHit < minHit || maxHit < 0) {
+            return 0;
+        }
+        double expected = 0;
+        double probability = hitChance / (maxHit - minHit + 1);
+        for (int damage = minHit; damage <= maxHit; damage++) {
+            expected += probability * transformAccurateDamage(damage);
+        }
+        return expected;
+    }
+
+    private int transformAccurateDamage(int damage) {
+        if (isImmune()) {
+            return 0;
+        }
+        return finishAccurateDamage(applyAttackerDamageScaling(damage));
+    }
+
+    private int applyAttackerDamageScaling(int damage) {
+        int transformed = damage;
+        if (isWearingDharok()) {
+            transformed = getDharokScaledDamage(transformed);
+        }
+        if (isVampyre()) {
+            transformed = applyVampyreDamageScaling(transformed);
+        }
+        return transformed;
+    }
+
+    private int finishAccurateDamage(int damage) {
+        int transformed = damage;
+        boolean reducedByTarget = false;
+        if (isCorporealBeast() && !isWearingCorpbaneWeapon()) {
+            transformed /= 2;
+            reducedByTarget = true;
+        }
+        boolean styleReduction = isStyleDamageReductionApplicable();
+        transformed = applyStyleDamageReduction(transformed);
+        reducedByTarget = reducedByTarget || styleReduction;
+        transformed = applyVampyreTargetDamageLimit(transformed);
+        return Math.max(transformed, reducedByTarget ? 0 : 1);
+    }
+
+    private int finishInaccurateDamage(int damage) {
+        int transformed = damage;
+        if (isCorporealBeast() && !isWearingCorpbaneWeapon()) {
+            transformed /= 2;
+        }
+        transformed = applyStyleDamageReduction(transformed);
+        return applyVampyreTargetDamageLimit(transformed);
+    }
+
+    private int applyStyleDamageReduction(int damage) {
+        if (isStyleDamageReductionApplicable()) {
+            return damage / 3;
+        }
+        return damage;
+    }
+
+    private boolean isStyleDamageReductionApplicable() {
+        AttackType attackType = player.getCombatStyle().getAttackType();
+        int monsterId = monster.getId();
+        if (attackType.isMagic()
+            && (MonsterConstants.isOlmMeleeHand(monsterId) || MonsterConstants.isOlmHead(monsterId))) {
+            return true;
+        }
+        if (attackType.isRanged()
+            && (MonsterConstants.isOlmMageHand(monsterId) || MonsterConstants.isOlmMeleeHand(monsterId))) {
+            return true;
+        }
+        return false;
+    }
+
+    private int getDharokScaledDamage(int damage) {
+        int missingHp = player.getHitpointsLevel() - player.getCurrentHitpoints();
+        return applyFactor(damage, 10000 + missingHp * player.getHitpointsLevel(), 10000);
+    }
+
+    private int getMinimumHit(int scalarMaxHit) {
+        if (isWearingFang()) {
+            return fangMinimumHit;
+        }
+        return 0;
+    }
+
+    private double averageAccurateHit(int minHit, int maxHit) {
+        if (maxHit <= 0) {
+            return 0;
+        }
+        if (minHit <= 0) {
+            return getAverageHit(maxHit);
+        }
+        return (minHit + maxHit) / 2.0;
+    }
+
+    private int applyVampyreDamageScaling(int damage) {
+        if (player.isWearing("Blisterwood flail")) {
+            return applyFactor(applyEfaritayDamageScaling(damage), 5, 4);
+        }
+        if (player.isWearing("Blisterwood sickle")) {
+            return applyFactor(applyEfaritayDamageScaling(damage), 23, 20);
+        }
+        if (player.isWearing("Ivandis flail")) {
+            return applyFactor(applyEfaritayDamageScaling(damage), 6, 5);
+        }
+        if (player.isWearing("Rod of ivandis") && !hasAttribute(MonsterAttribute.VAMPYRE_3)) {
+            return applyFactor(applyEfaritayDamageScaling(damage), 11, 10);
+        }
+        if (isWearingSilverWeapon() && hasAttribute(MonsterAttribute.VAMPYRE_1)) {
+            return applyFactor(applyEfaritayDamageScaling(damage), 11, 10);
+        }
+        return damage;
+    }
+
+    private double applyVampyreDamageScaling(double damage) {
+        if (player.isWearing("Blisterwood flail")) {
+            return applyEfaritayDamageScaling(damage) * 5.0 / 4.0;
+        }
+        if (player.isWearing("Blisterwood sickle")) {
+            return applyEfaritayDamageScaling(damage) * 23.0 / 20.0;
+        }
+        if (player.isWearing("Ivandis flail")) {
+            return applyEfaritayDamageScaling(damage) * 6.0 / 5.0;
+        }
+        if (player.isWearing("Rod of ivandis") && !hasAttribute(MonsterAttribute.VAMPYRE_3)) {
+            return applyEfaritayDamageScaling(damage) * 11.0 / 10.0;
+        }
+        if (isWearingSilverWeapon() && hasAttribute(MonsterAttribute.VAMPYRE_1)) {
+            return applyEfaritayDamageScaling(damage) * 11.0 / 10.0;
+        }
+        return damage;
+    }
+
+    private int applyEfaritayDamageScaling(int damage) {
+        return player.isWearing("Efaritay's aid") ? applyFactor(damage, 11, 10) : damage;
+    }
+
+    private double applyEfaritayDamageScaling(double damage) {
+        return player.isWearing("Efaritay's aid") ? damage * 11.0 / 10.0 : damage;
+    }
+
+    private int applyVampyreTargetDamageLimit(int damage) {
+        if (!hasAttribute(MonsterAttribute.VAMPYRE_2)) {
+            return damage;
+        }
+        if (!wearingVampyrebane(MonsterAttribute.VAMPYRE_2) && player.isWearing("Efaritay's aid")) {
+            return damage / 2;
+        }
+        if (isWearingSilverWeapon()) {
+            return Math.min(damage, 10);
+        }
+        return damage;
+    }
+
+    private boolean isNonRubyBoltEffectApplicable() {
+        return isCrossbowAttack() && !isRubyBoltEffectApplicable() && getNonRubyBoltType() != BoltEffect.NONE;
+    }
+
+    private double nonRubyBoltExpectedDamage(double baseExpected, double hitChance, int scalarMaxHit) {
+        BoltEffect effect = getNonRubyBoltType();
+        switch (effect) {
+            case OPAL:
+                return bonusBoltExpected(baseExpected, hitChance, scalarMaxHit, 0.05 * kandarinBoltFactor(), opalBoltBonus(), false);
+            case PEARL:
+                return bonusBoltExpected(baseExpected, hitChance, scalarMaxHit, 0.06 * kandarinBoltFactor(), pearlBoltBonus(), false);
+            case DRAGONSTONE:
+                return bonusBoltExpected(baseExpected, hitChance, scalarMaxHit, 0.06 * kandarinBoltFactor(), dragonstoneBoltBonus(), true);
+            case DIAMOND:
+                return effectDistributionBoltExpected(baseExpected, hitChance, 0.10 * kandarinBoltFactor(), diamondBoltEffectMax(), false);
+            case ONYX:
+                return effectDistributionBoltExpected(baseExpected, hitChance, 0.11 * kandarinBoltFactor(), onyxBoltEffectMax(), true);
+            default:
+                return baseExpected;
+        }
+    }
+
+    private double bonusBoltExpected(double baseExpected, double hitChance, int scalarMaxHit, double chance, int bonusDamage, boolean accurateOnly) {
+        double procExpected = 0;
+        int minHit = getMinimumHit(scalarMaxHit);
+        int rollCount = scalarMaxHit - minHit + 1;
+        if (rollCount > 0) {
+            double probability = hitChance / rollCount;
+            for (int damage = minHit; damage <= scalarMaxHit; damage++) {
+                int preTarget = applyAttackerDamageScaling(damage) + bonusDamage;
+                procExpected += probability * finishAccurateDamage(preTarget);
+            }
+        }
+        if (!accurateOnly) {
+            procExpected += (1.0 - hitChance) * finishInaccurateDamage(bonusDamage);
+        }
+        if (isZaryteCrossbowSpec()) {
+            double forcedAccurate = 0;
+            if (rollCount > 0) {
+                double probability = hitChance / rollCount;
+                for (int damage = minHit; damage <= scalarMaxHit; damage++) {
+                    forcedAccurate += probability * finishAccurateDamage(applyAttackerDamageScaling(damage) + bonusDamage);
+                }
+            }
+            double inaccurateProc = accurateOnly ? 0 : (1.0 - hitChance) * chance * finishInaccurateDamage(bonusDamage);
+            return forcedAccurate + inaccurateProc;
+        }
+        return chance * procExpected + (1.0 - chance) * baseExpected;
+    }
+
+    private double effectDistributionBoltExpected(double baseExpected, double hitChance, double chance, int effectMax, boolean accurateOnly) {
+        double effectExpected = uniformEffectExpected(effectMax);
+        if (isZaryteCrossbowSpec()) {
+            if (accurateOnly) {
+                return hitChance * effectExpected;
+            }
+            return (hitChance + (1.0 - hitChance) * chance) * effectExpected;
+        }
+        if (accurateOnly) {
+            return hitChance * chance * effectExpected + (1.0 - chance) * baseExpected;
+        }
+        return chance * effectExpected + (1.0 - chance) * baseExpected;
+    }
+
+    private double uniformEffectExpected(int effectMax) {
+        if (effectMax < 0) {
+            return 0;
+        }
+        double expected = 0;
+        double probability = 1.0 / (effectMax + 1);
+        for (int damage = 0; damage <= effectMax; damage++) {
+            expected += probability * finishAccurateDamage(damage);
+        }
+        return expected;
+    }
+
+    private int nonRubyBoltMax(int scalarMaxHit) {
+        BoltEffect effect = getNonRubyBoltType();
+        switch (effect) {
+            case OPAL:
+                return finishAccurateDamage(applyAttackerDamageScaling(scalarMaxHit) + opalBoltBonus());
+            case PEARL:
+                return finishAccurateDamage(applyAttackerDamageScaling(scalarMaxHit) + pearlBoltBonus());
+            case DRAGONSTONE:
+                return finishAccurateDamage(applyAttackerDamageScaling(scalarMaxHit) + dragonstoneBoltBonus());
+            case DIAMOND:
+                return finishAccurateDamage(diamondBoltEffectMax());
+            case ONYX:
+                return finishAccurateDamage(onyxBoltEffectMax());
+            default:
+                return 0;
+        }
+    }
+
+    private BoltEffect getNonRubyBoltType() {
+        if (!isCrossbowAttack()) {
+            return BoltEffect.NONE;
+        }
+        if (player.isWearingAny("Opal bolts (e)", "Opal dragon bolts (e)")) {
+            return BoltEffect.OPAL;
+        }
+        if (player.isWearingAny("Pearl bolts (e)", "Pearl dragon bolts (e)")) {
+            return BoltEffect.PEARL;
+        }
+        if (player.isWearingAny("Diamond bolts (e)", "Diamond dragon bolts (e)")) {
+            return BoltEffect.DIAMOND;
+        }
+        if (player.isWearingAny("Dragonstone bolts (e)", "Dragonstone dragon bolts (e)")
+            && !hasAttribute(MonsterAttribute.FIERY) && !hasAttribute(MonsterAttribute.DRAGON)) {
+            return BoltEffect.DRAGONSTONE;
+        }
+        if (player.isWearingAny("Onyx bolts (e)", "Onyx dragon bolts (e)") && !hasAttribute(MonsterAttribute.UNDEAD)) {
+            return BoltEffect.ONYX;
+        }
+        return BoltEffect.NONE;
+    }
+
+    private int opalBoltBonus() {
+        return player.getBoostedRanged() / (isWearingZaryteCrossbow() ? 9 : 10);
+    }
+
+    private int pearlBoltBonus() {
+        int divisor = hasAttribute(MonsterAttribute.FIERY) ? 15 : 20;
+        return player.getBoostedRanged() / (isWearingZaryteCrossbow() ? divisor - 2 : divisor);
+    }
+
+    private int dragonstoneBoltBonus() {
+        return player.getBoostedRanged() * 2 / (isWearingZaryteCrossbow() ? 9 : 10);
+    }
+
+    private int diamondBoltEffectMax() {
+        return applyFactor(getScalarMaxHit(), isWearingZaryteCrossbow() ? 126 : 115, 100);
+    }
+
+    private int onyxBoltEffectMax() {
+        return applyFactor(getScalarMaxHit(), isWearingZaryteCrossbow() ? 132 : 120, 100);
+    }
+
+    private double kandarinBoltFactor() {
+        return player.isKandarinDiary() ? 1.1 : 1.0;
+    }
+
+    private boolean isRubyBoltEffectApplicable() {
+        return isCrossbowAttack()
+            && player.isWearingAny("Ruby bolts (e)", "Ruby dragon bolts (e)")
+            && player.getCurrentHitpoints() >= 10;
+    }
+
+    private int rubyBoltDamage() {
+        int currentHp = monster.getInputs().getMonsterCurrentHp() > 0 ? monster.getInputs().getMonsterCurrentHp() : monster.getHitpoints();
+        int cap = contains(MonsterConstants.INFINITE_HEALTH_MONSTERS, monster.getId())
+            ? (isWearingZaryteCrossbow() ? 66 : 60)
+            : (isWearingZaryteCrossbow() ? 110 : 100);
+        return Math.min(cap, applyFactor(currentHp, isWearingZaryteCrossbow() ? 22 : 20, 100));
+    }
+
+    private boolean isCrossbowAttack() {
+        if (!player.getCombatStyle().getAttackType().isRanged()) {
+            return false;
+        }
+        String category = player.getWeaponCategory();
+        if (category == null || category.isEmpty()) {
+            category = inferWeaponCategory();
+        }
+        return "Crossbow".equals(category);
+    }
+
+    private boolean isWearingZaryteCrossbow() {
+        return player.isWearing("Zaryte crossbow");
+    }
+
+    private boolean isZaryteCrossbowSpec() {
+        return usingSpecialAttack && isWearingZaryteCrossbow();
+    }
+
+    private enum BoltEffect {
+        NONE,
+        OPAL,
+        PEARL,
+        DIAMOND,
+        DRAGONSTONE,
+        ONYX
     }
 
     public int getAttackSpeed() {
@@ -1064,36 +1719,39 @@ public class DpsCalculator extends BaseCalc {
 
     private int applyPrayerBonus(int level, boolean isAttack) {
         Set<Prayer> prayers = player.getActivePrayers();
-        double multiplier = 1.0;
-        int flatBonus = 0;
+        int effectiveLevel = level;
 
         for (Prayer prayer : prayers) {
             if (isAttack) {
                 if (isUsingMeleeStyle() && prayer.isMeleePrayer()) {
-                    multiplier *= prayer.getMeleeAttackMultiplier();
+                    effectiveLevel = applyPrayerFactor(effectiveLevel, prayer.getAttackBonus());
                 } else if (player.getCombatStyle().getAttackType().isRanged() && prayer.isRangedPrayer()) {
-                    multiplier *= prayer.getRangedAttackMultiplier();
+                    effectiveLevel = applyPrayerFactor(effectiveLevel, prayer.getRangedBonus());
                 } else if (player.getCombatStyle().getAttackType().isMagic() && prayer.isMagicPrayer()) {
-                    multiplier *= prayer.getMagicAttackMultiplier();
+                    effectiveLevel = applyPrayerFactor(effectiveLevel, prayer.getMagicBonus());
                 }
             } else {
                 if (isUsingMeleeStyle() && prayer.isMeleePrayer()) {
-                    if (prayer == Prayer.BURST_OF_STRENGTH && level <= 20) {
-                        flatBonus += 1;
+                    if (prayer == Prayer.BURST_OF_STRENGTH && effectiveLevel <= 20) {
+                        effectiveLevel += 1;
                     } else {
-                        multiplier *= prayer.getMeleeStrengthMultiplier();
+                        effectiveLevel = applyPrayerFactor(effectiveLevel, prayer.getStrengthBonus());
                     }
                 } else if (player.getCombatStyle().getAttackType().isRanged() && prayer.isRangedPrayer()) {
-                    if (prayer == Prayer.SHARP_EYE && level <= 20) {
-                        flatBonus += 1;
+                    if (prayer == Prayer.SHARP_EYE && effectiveLevel <= 20) {
+                        effectiveLevel += 1;
                     } else {
-                        multiplier *= prayer.getRangedStrengthMultiplier();
+                        effectiveLevel = applyPrayerFactor(effectiveLevel, prayer == Prayer.RIGOUR ? 23 : prayer.getRangedBonus());
                     }
                 }
             }
         }
 
-        return (int) Math.floor(level * multiplier) + flatBonus;
+        return effectiveLevel;
+    }
+
+    private int applyPrayerFactor(int level, int bonusPercent) {
+        return applyFactor(level, 100 + bonusPercent, 100);
     }
 
     private int getAttackBonusForStyle() {
@@ -1119,7 +1777,7 @@ public class DpsCalculator extends BaseCalc {
     }
 
     private boolean isRevWeaponApplicable() {
-        if (!player.isInWilderness()) {
+        if (!player.isInWilderness() || !"Charged".equals(player.getWeaponVersion())) {
             return false;
         }
         
@@ -1158,20 +1816,69 @@ public class DpsCalculator extends BaseCalc {
         int bonus = base + t2 - t3;
         return (value * bonus) / 100;
     }
+
+    private boolean isAmmoInvalid() {
+        AttackType type = player.getCombatStyle().getAttackType();
+        if (!type.isRanged()) {
+            return false;
+        }
+        String category = player.getWeaponCategory();
+        if (category == null || category.isEmpty()) {
+            category = inferWeaponCategory();
+        }
+        int ammoId = player.getAmmoId();
+        String ammoName = player.getAmmoName();
+        if (contains(NO_AMMO_RANGED_WEAPON_IDS, player.getWeaponId()) || "Blowpipe".equals(category)) {
+            return false;
+        }
+        if ("Bow".equals(category)) {
+            return ammoName == null || !ammoName.contains("arrow");
+        }
+        if ("Crossbow".equals(category)) {
+            return ammoName == null || !ammoName.contains("bolt");
+        }
+        if ("Ballista".equals(category)) {
+            return ammoName == null || !ammoName.contains("javelin");
+        }
+        if ("Salamander".equals(category)) {
+            return ammoName == null || !ammoName.contains("tar");
+        }
+        return ammoId <= 0 && requiresAmmoById(player.getWeaponId());
+    }
+
+    private String inferWeaponCategory() {
+        if (contains(CROSSBOW_WEAPON_IDS, player.getWeaponId()) || player.isWearingItemContaining("crossbow")) {
+            return "Crossbow";
+        }
+        String weapon = player.getWeaponName();
+        if (weapon != null && weapon.toLowerCase().contains("bow")) {
+            return "Bow";
+        }
+        return "";
+    }
+
+    private boolean requiresAmmoById(int weaponId) {
+        return contains(CROSSBOW_WEAPON_IDS, weaponId) || player.getWeaponName() != null && player.getWeaponName().toLowerCase().contains("bow");
+    }
+
+    private boolean contains(int[] values, int needle) {
+        for (int value : values) {
+            if (value == needle) {
+                return true;
+            }
+        }
+        return false;
+    }
     
     private int demonbaneFactor(int weaponDemonbane) {
-        int vulnerability = monster.getInputs().getDemonbaneVulnerability();
-        if (vulnerability == 0) {
-            vulnerability = getDemonbaneVulnerability();
-        }
-        return (weaponDemonbane * vulnerability) / 100;
+        return (weaponDemonbane * getDemonbaneVulnerability()) / 100;
     }
     
     private int getDemonbaneVulnerability() {
         if (monster.getId() == -1 && monster.getInputs().getDemonbaneVulnerability() > 0) {
             return monster.getInputs().getDemonbaneVulnerability();
         }
-        if ("Duke Sucellus".equals(monster.getName())) {
+        if (monster.getId() == 12191 || "Duke Sucellus".equals(monster.getName())) {
             return 70;
         }
         if (MonsterConstants.isYama(monster.getId())) {
@@ -1210,6 +1917,25 @@ public class DpsCalculator extends BaseCalc {
     protected boolean isWearingPolearm() {
         String weapon = player.getWeaponName();
         return weapon != null && (weapon.contains("halberd") || weapon.contains("spear"));
+    }
+
+    protected boolean isWearingCorpbaneWeapon() {
+        String weapon = player.getWeaponName();
+        if (weapon == null) {
+            return false;
+        }
+
+        boolean isStab = player.getCombatStyle().getAttackType() == AttackType.STAB;
+        if (isWearingFang()) {
+            return isStab;
+        }
+        if (weapon.endsWith("halberd")) {
+            return isStab;
+        }
+        if (weapon.contains("spear") && !"Blue moon spear".equals(weapon)) {
+            return isStab;
+        }
+        return player.getCombatStyle().getAttackType().isMagic();
     }
     
     protected boolean isWearingSalamander() {
@@ -1273,6 +1999,10 @@ public class DpsCalculator extends BaseCalc {
         return hasAttribute(MonsterAttribute.VAMPYRE_1) 
             || hasAttribute(MonsterAttribute.VAMPYRE_2) 
             || hasAttribute(MonsterAttribute.VAMPYRE_3);
+    }
+
+    protected boolean isCorporealBeast() {
+        return monster != null && "Corporeal Beast".equals(monster.getName());
     }
     
     protected boolean isUsingDemonbane() {

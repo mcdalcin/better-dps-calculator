@@ -3,6 +3,8 @@ package com.dpscalc;
 import com.dpscalc.calc.DpsCalculator;
 import com.dpscalc.calc.DpsResult;
 import com.dpscalc.data.MonsterAttribute;
+import com.dpscalc.data.MonsterConstants;
+import com.dpscalc.data.MonsterInputs;
 import com.dpscalc.data.MonsterStats;
 import com.dpscalc.state.*;
 import org.junit.Test;
@@ -333,6 +335,28 @@ public class DpsCalculatorTest {
             // defence roll = 10 * 64 = 640
             assertEquals(640, defRoll);
         }
+
+        @Test
+        public void olmDefenceRollUsesSuppliedScaledStats_whenMonsterWasAlreadyScaled() {
+            MonsterStats monster = monster()
+                .id(MonsterConstants.OLM_MAGE_HAND_IDS[0])
+                .name("Great Olm")
+                .attribute(MonsterAttribute.XERICIAN)
+                .defenceLevel(180)
+                .slashDefence(200)
+                .build();
+            MonsterInputs inputs = new MonsterInputs();
+            inputs.setPartySize(4);
+            monster.setInputs(inputs);
+
+            PlayerState player = player()
+                .combatStyle(CombatStyle.MELEE_ACCURATE_SLASH)
+                .build();
+
+            DpsCalculator calc = new DpsCalculator(player, monster);
+
+            assertEquals(49896, calc.getNpcDefenceRoll());
+        }
     }
 
     // ========================================================================
@@ -479,7 +503,7 @@ public class DpsCalculatorTest {
             DpsCalculator calc = new DpsCalculator(player, monster);
 
             assertEquals("Mystic Vigour should apply 18% magic accuracy", 10033, calc.getMaxAttackRoll());
-            assertEquals("Mystic Vigour should apply 30% magic damage", 36, calc.getMaxHit());
+            assertEquals("Mystic Vigour should apply 3% magic damage", 28, calc.getMaxHit());
         }
     }
 
@@ -1869,6 +1893,7 @@ public class DpsCalculatorTest {
             PlayerState player = player()
                 .rangedLevel(99)
                 .weapon("Twisted bow")
+                .ammo("Dragon arrow")
                 .rangedAttack(70)
                 .rangedStrength(20)
                 .combatStyle(CombatStyle.RANGED_ACCURATE)
@@ -1903,6 +1928,7 @@ public class DpsCalculatorTest {
             PlayerState player = player()
                 .rangedLevel(99)
                 .weapon("Twisted bow")
+                .ammo("Dragon arrow")
                 .rangedAttack(70)
                 .rangedStrength(20)
                 .combatStyle(CombatStyle.RANGED_ACCURATE)
@@ -1936,6 +1962,7 @@ public class DpsCalculatorTest {
             PlayerState player = player()
                 .rangedLevel(99)
                 .weapon("Twisted bow")
+                .ammo("Dragon arrow")
                 .rangedAttack(70)
                 .rangedStrength(20)
                 .combatStyle(CombatStyle.RANGED_ACCURATE)
