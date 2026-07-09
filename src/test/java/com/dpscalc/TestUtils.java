@@ -83,7 +83,10 @@ public class TestUtils {
         private int magicBoost = 0;
         
         private EquipmentStats equipmentStats = new EquipmentStats();
+        private int[] equippedItemIds = new int[14];
         private String[] equippedItemNames = new String[14];
+        private String[] equippedItemVersions = new String[14];
+        private String[] equippedItemCategories = new String[14];
         private CombatStyle combatStyle = CombatStyle.MELEE_ACCURATE_SLASH;
         private Set<Prayer> activePrayers = EnumSet.noneOf(Prayer.class);
         private int weaponSpeed = 4;
@@ -193,37 +196,37 @@ public class TestUtils {
         }
 
         public PlayerStateBuilder weapon(String weaponName) {
-            this.equippedItemNames[EquipmentSlot.WEAPON.getIndex()] = weaponName;
+            setItem(EquipmentSlot.WEAPON, weaponName);
             return this;
         }
 
         public PlayerStateBuilder head(String itemName) {
-            this.equippedItemNames[EquipmentSlot.HEAD.getIndex()] = itemName;
+            setItem(EquipmentSlot.HEAD, itemName);
             return this;
         }
 
         public PlayerStateBuilder body(String itemName) {
-            this.equippedItemNames[EquipmentSlot.BODY.getIndex()] = itemName;
+            setItem(EquipmentSlot.BODY, itemName);
             return this;
         }
 
         public PlayerStateBuilder legs(String itemName) {
-            this.equippedItemNames[EquipmentSlot.LEGS.getIndex()] = itemName;
+            setItem(EquipmentSlot.LEGS, itemName);
             return this;
         }
 
         public PlayerStateBuilder neck(String itemName) {
-            this.equippedItemNames[EquipmentSlot.AMULET.getIndex()] = itemName;
+            setItem(EquipmentSlot.AMULET, itemName);
             return this;
         }
 
         public PlayerStateBuilder gloves(String itemName) {
-            this.equippedItemNames[EquipmentSlot.GLOVES.getIndex()] = itemName;
+            setItem(EquipmentSlot.GLOVES, itemName);
             return this;
         }
 
         public PlayerStateBuilder ammo(String itemName) {
-            this.equippedItemNames[EquipmentSlot.AMMO.getIndex()] = itemName;
+            setItem(EquipmentSlot.AMMO, itemName);
             return this;
         }
 
@@ -276,7 +279,10 @@ public class TestUtils {
             state.setMagicBoost(magicBoost);
             
             state.setEquipmentStats(equipmentStats);
+            state.setEquippedItemIds(equippedItemIds);
             state.setEquippedItemNames(equippedItemNames);
+            state.setEquippedItemVersions(equippedItemVersions);
+            state.setEquippedItemCategories(equippedItemCategories);
             state.setCombatStyle(combatStyle);
             state.setActivePrayers(activePrayers);
             state.setWeaponSpeed(weaponSpeed);
@@ -284,6 +290,59 @@ public class TestUtils {
             state.setInWilderness(inWilderness);
             
             return state;
+        }
+
+        private void setItem(EquipmentSlot slot, String itemName) {
+            int index = slot.getIndex();
+            equippedItemNames[index] = itemName;
+            equippedItemIds[index] = itemId(itemName);
+            equippedItemVersions[index] = itemVersion(itemName);
+            equippedItemCategories[index] = itemCategory(itemName);
+        }
+
+        private int itemId(String itemName) {
+            if (itemName == null) {
+                return -1;
+            }
+            switch (itemName) {
+                case "Bow of faerdhinen":
+                    return 25865;
+                case "Craw's bow":
+                    return 22547;
+                case "Webweaver bow":
+                    return 27652;
+                case "Twisted bow":
+                    return 20997;
+                case "Dragon hunter crossbow":
+                    return 21012;
+                default:
+                    return -1;
+            }
+        }
+
+        private String itemVersion(String itemName) {
+            if ("Craw's bow".equals(itemName) || "Webweaver bow".equals(itemName)) {
+                return "Charged";
+            }
+            return "";
+        }
+
+        private String itemCategory(String itemName) {
+            if (itemName == null) {
+                return "";
+            }
+            switch (itemName) {
+                case "Bow of faerdhinen":
+                case "Craw's bow":
+                case "Webweaver bow":
+                case "Twisted bow":
+                case "Scorching bow":
+                    return "Bow";
+                case "Dragon hunter crossbow":
+                    return "Crossbow";
+                default:
+                    return "";
+            }
         }
     }
 
