@@ -46,7 +46,7 @@ Parity fixtures are generated and replayed in the parent OSRS DPS calculator wor
 
 - Reference repository: `https://github.com/weirdgloop/osrs-dps-calc`
 - Synced reference commit: `1bebf1330bc3a81394819e8ae6ba8a4d4ae80328`
-- Last verified: `2026-07-07`
+- Last verified: `2026-07-09`
 
 See [SYNC_STATUS.md](SYNC_STATUS.md) for current parity notes and the parent sync workflow.
 

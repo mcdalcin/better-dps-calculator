@@ -1,7 +1,7 @@
 package com.dpscalc.calc;
 
 public final class SyncVersion {
-    public static final String WEB_CALC_COMMIT = "1bebf1330bc3a81394819e8ae6ba8a4d4ae80328";
+    public static final String WEB_CALC_COMMIT = "1bebf133";
     public static final String WEB_CALC_DATE = "2026-07-07";
     public static final String LAST_VERIFIED = "2026-07-07";
     
