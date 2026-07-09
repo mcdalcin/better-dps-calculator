@@ -203,7 +203,7 @@ public class BaseCalc {
     }
 
     protected int applyFactor(int base, int numerator, int denominator) {
-        return (int) Math.floor((double) base * numerator / denominator);
+        return (int) ((double) base * numerator / denominator);
     }
 
     protected int addFactor(int base, int numerator, int denominator) {

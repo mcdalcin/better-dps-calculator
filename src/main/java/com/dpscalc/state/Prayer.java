@@ -23,10 +23,10 @@ public enum Prayer {
     RIGOUR(20, 23, 25, 20, 0, 0, net.runelite.api.Prayer.RIGOUR),
 
     MYSTIC_WILL(0, 0, 0, 0, 5, 0, net.runelite.api.Prayer.MYSTIC_WILL),
-    MYSTIC_LORE(0, 0, 0, 0, 10, 0, net.runelite.api.Prayer.MYSTIC_LORE),
-    MYSTIC_MIGHT(0, 0, 0, 0, 15, 0, net.runelite.api.Prayer.MYSTIC_MIGHT),
+    MYSTIC_LORE(0, 0, 0, 0, 10, 10, net.runelite.api.Prayer.MYSTIC_LORE),
+    MYSTIC_MIGHT(0, 0, 0, 0, 15, 20, net.runelite.api.Prayer.MYSTIC_MIGHT),
     MYSTIC_VIGOUR(0, 0, 5, 0, 18, 30, null),
-    AUGURY(0, 0, 25, 0, 25, 0, net.runelite.api.Prayer.AUGURY);
+    AUGURY(0, 0, 25, 0, 25, 40, net.runelite.api.Prayer.AUGURY);
 
     private final int attackBonus;
     private final int strengthBonus;
@@ -103,7 +103,7 @@ public enum Prayer {
 
     /**
      * Get the effective magic damage multiplier from this prayer.
-     * Only Augury provides magic damage bonus (0% - it's purely accuracy and defence).
+     * Augury provides a 4% magic damage bonus in the current web calculator reference.
      */
     public double getMagicDamageMultiplier() {
         return 1.0 + (magicDamageBonus / 100.0);

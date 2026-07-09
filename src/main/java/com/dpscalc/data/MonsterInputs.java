@@ -6,6 +6,10 @@ public class MonsterInputs {
     private int toaPathLevel;
     private int monsterCurrentHp;
     private String phase;
+    private boolean fromCoxCm;
+    private int partyMaxCombatLevel = 126;
+    private int partySumMiningLevel = 99;
+    private int partyMaxHpLevel = 99;
     private int partySize = 1;
     private int demonbaneVulnerability = 100;
     private DefenceReductions defenceReductions = new DefenceReductions();
@@ -17,6 +21,10 @@ public class MonsterInputs {
         this.toaPathLevel = other.toaPathLevel;
         this.monsterCurrentHp = other.monsterCurrentHp;
         this.phase = other.phase;
+        this.fromCoxCm = other.fromCoxCm;
+        this.partyMaxCombatLevel = other.partyMaxCombatLevel;
+        this.partySumMiningLevel = other.partySumMiningLevel;
+        this.partyMaxHpLevel = other.partyMaxHpLevel;
         this.partySize = other.partySize;
         this.demonbaneVulnerability = other.demonbaneVulnerability;
         this.defenceReductions = new DefenceReductions(other.defenceReductions);
@@ -54,6 +62,38 @@ public class MonsterInputs {
         this.phase = phase;
     }
 
+    public boolean isFromCoxCm() {
+        return fromCoxCm;
+    }
+
+    public void setFromCoxCm(boolean fromCoxCm) {
+        this.fromCoxCm = fromCoxCm;
+    }
+
+    public int getPartyMaxCombatLevel() {
+        return partyMaxCombatLevel;
+    }
+
+    public void setPartyMaxCombatLevel(int partyMaxCombatLevel) {
+        this.partyMaxCombatLevel = partyMaxCombatLevel;
+    }
+
+    public int getPartySumMiningLevel() {
+        return partySumMiningLevel;
+    }
+
+    public void setPartySumMiningLevel(int partySumMiningLevel) {
+        this.partySumMiningLevel = partySumMiningLevel;
+    }
+
+    public int getPartyMaxHpLevel() {
+        return partyMaxHpLevel;
+    }
+
+    public void setPartyMaxHpLevel(int partyMaxHpLevel) {
+        this.partyMaxHpLevel = partyMaxHpLevel;
+    }
+
     public int getPartySize() {
         return partySize;
     }
@@ -82,10 +122,13 @@ public class MonsterInputs {
         private int dwh;
         private int bgs;
         private int arclight;
+        private int emberlight;
         private int tonalztic;
         private int elderMaul;
         private int vulnerability;
         private int accursedSceptre;
+        private int seercull;
+        private int ayak;
         
         public DefenceReductions() {}
         
@@ -93,10 +136,13 @@ public class MonsterInputs {
             this.dwh = other.dwh;
             this.bgs = other.bgs;
             this.arclight = other.arclight;
+            this.emberlight = other.emberlight;
             this.tonalztic = other.tonalztic;
             this.elderMaul = other.elderMaul;
             this.vulnerability = other.vulnerability;
             this.accursedSceptre = other.accursedSceptre;
+            this.seercull = other.seercull;
+            this.ayak = other.ayak;
         }
 
         public int getDwh() { return dwh; }
@@ -107,6 +153,9 @@ public class MonsterInputs {
 
         public int getArclight() { return arclight; }
         public void setArclight(int arclight) { this.arclight = arclight; }
+
+        public int getEmberlight() { return emberlight; }
+        public void setEmberlight(int emberlight) { this.emberlight = emberlight; }
 
         public int getTonalztic() { return tonalztic; }
         public void setTonalztic(int tonalztic) { this.tonalztic = tonalztic; }
@@ -119,5 +168,11 @@ public class MonsterInputs {
 
         public int getAccursedSceptre() { return accursedSceptre; }
         public void setAccursedSceptre(int accursedSceptre) { this.accursedSceptre = accursedSceptre; }
+
+        public int getSeercull() { return seercull; }
+        public void setSeercull(int seercull) { this.seercull = seercull; }
+
+        public int getAyak() { return ayak; }
+        public void setAyak(int ayak) { this.ayak = ayak; }
     }
 }

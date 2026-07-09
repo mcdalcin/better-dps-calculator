@@ -24,6 +24,8 @@ public class PlayerState {
     
     private int[] equippedItemIds = new int[14];
     private String[] equippedItemNames = new String[14];
+    private String[] equippedItemVersions = new String[14];
+    private String[] equippedItemCategories = new String[14];
     
     private CombatStyle combatStyle;
     
@@ -34,9 +36,15 @@ public class PlayerState {
     private boolean onSlayerTask;
     private boolean inWilderness;
     private boolean chargeSpellActive;
+    private boolean kandarinDiary = true;
     private boolean forinthrySurgeActive;
     private int soulreaperStacks;
     private boolean markOfDarknessActive;
+    private boolean usingSunfireRunes;
+    private String spellName;
+    private String spellbook;
+    private String spellElement;
+    private int spellMaxHit;
 
     public int getAttackLevel() { return attackLevel; }
     public void setAttackLevel(int attackLevel) { this.attackLevel = attackLevel; }
@@ -85,9 +93,21 @@ public class PlayerState {
     
     public String[] getEquippedItemNames() { return equippedItemNames; }
     public void setEquippedItemNames(String[] equippedItemNames) { this.equippedItemNames = equippedItemNames; }
+
+    public String[] getEquippedItemVersions() { return equippedItemVersions; }
+    public void setEquippedItemVersions(String[] equippedItemVersions) { this.equippedItemVersions = equippedItemVersions; }
+
+    public String[] getEquippedItemCategories() { return equippedItemCategories; }
+    public void setEquippedItemCategories(String[] equippedItemCategories) { this.equippedItemCategories = equippedItemCategories; }
     
     public int getWeaponId() { return equippedItemIds[EquipmentSlot.WEAPON.getIndex()]; }
     public String getWeaponName() { return equippedItemNames[EquipmentSlot.WEAPON.getIndex()]; }
+    public String getWeaponVersion() { return equippedItemVersions[EquipmentSlot.WEAPON.getIndex()]; }
+    public String getWeaponCategory() { return equippedItemCategories[EquipmentSlot.WEAPON.getIndex()]; }
+    public int getAmmoId() { return equippedItemIds[EquipmentSlot.AMMO.getIndex()]; }
+    public String getAmmoName() { return equippedItemNames[EquipmentSlot.AMMO.getIndex()]; }
+    public String getCapeVersion() { return equippedItemVersions[EquipmentSlot.CAPE.getIndex()]; }
+    public String getShieldVersion() { return equippedItemVersions[EquipmentSlot.SHIELD.getIndex()]; }
     
     public CombatStyle getCombatStyle() { return combatStyle; }
     public void setCombatStyle(CombatStyle combatStyle) { this.combatStyle = combatStyle; }
@@ -106,7 +126,10 @@ public class PlayerState {
     
     public boolean isChargeSpellActive() { return chargeSpellActive; }
     public void setChargeSpellActive(boolean chargeSpellActive) { this.chargeSpellActive = chargeSpellActive; }
-    
+
+    public boolean isKandarinDiary() { return kandarinDiary; }
+    public void setKandarinDiary(boolean kandarinDiary) { this.kandarinDiary = kandarinDiary; }
+
     public boolean isForinthrySurgeActive() { return forinthrySurgeActive; }
     public void setForinthrySurgeActive(boolean forinthrySurgeActive) { this.forinthrySurgeActive = forinthrySurgeActive; }
     
@@ -115,6 +138,21 @@ public class PlayerState {
     
     public boolean isMarkOfDarknessActive() { return markOfDarknessActive; }
     public void setMarkOfDarknessActive(boolean markOfDarknessActive) { this.markOfDarknessActive = markOfDarknessActive; }
+
+    public boolean isUsingSunfireRunes() { return usingSunfireRunes; }
+    public void setUsingSunfireRunes(boolean usingSunfireRunes) { this.usingSunfireRunes = usingSunfireRunes; }
+
+    public String getSpellName() { return spellName; }
+    public void setSpellName(String spellName) { this.spellName = spellName; }
+
+    public String getSpellbook() { return spellbook; }
+    public void setSpellbook(String spellbook) { this.spellbook = spellbook; }
+
+    public String getSpellElement() { return spellElement; }
+    public void setSpellElement(String spellElement) { this.spellElement = spellElement; }
+
+    public int getSpellMaxHit() { return spellMaxHit; }
+    public void setSpellMaxHit(int spellMaxHit) { this.spellMaxHit = spellMaxHit; }
 
     public int getBoostedAttack() { return attackLevel + attackBoost; }
     public int getBoostedStrength() { return strengthLevel + strengthBoost; }
