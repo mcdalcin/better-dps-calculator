@@ -35,6 +35,39 @@ public class MonsterStats {
     
     private MonsterInputs inputs = new MonsterInputs();
 
+    public MonsterStats() {}
+
+    public MonsterStats(MonsterStats other) {
+        this.id = other.id;
+        this.name = other.name;
+        this.version = other.version;
+        this.size = other.size;
+        this.speed = other.speed;
+        this.attackLevel = other.attackLevel;
+        this.strengthLevel = other.strengthLevel;
+        this.defenceLevel = other.defenceLevel;
+        this.hitpoints = other.hitpoints;
+        this.magicLevel = other.magicLevel;
+        this.rangedLevel = other.rangedLevel;
+        this.stabDefence = other.stabDefence;
+        this.slashDefence = other.slashDefence;
+        this.crushDefence = other.crushDefence;
+        this.magicDefence = other.magicDefence;
+        this.lightRangedDefence = other.lightRangedDefence;
+        this.standardRangedDefence = other.standardRangedDefence;
+        this.heavyRangedDefence = other.heavyRangedDefence;
+        this.flatArmour = other.flatArmour;
+        this.offensiveMagic = other.offensiveMagic;
+        this.attributes = new HashSet<>(other.attributes);
+        this.weaknessElement = other.weaknessElement;
+        this.weaknessSeverity = other.weaknessSeverity;
+        this.inputs = new MonsterInputs(other.inputs);
+    }
+
+    public MonsterStats copy() {
+        return new MonsterStats(this);
+    }
+
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
     
