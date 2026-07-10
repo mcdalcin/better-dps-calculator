@@ -42,6 +42,8 @@ import net.runelite.client.util.ImageUtil;
 import java.awt.image.BufferedImage;
 
 import javax.inject.Inject;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.EnumSet;
 import java.util.Set;
 import java.util.concurrent.Executors;
@@ -315,13 +317,17 @@ public class DpsCalcPlugin extends Plugin {
         }
 
         int npcId = targetNpc.getId();
-        currentMonsterStats = monsterDataManager.getMonster(npcId);
+        MonsterStats baseMonsterStats = monsterDataManager.getMonster(npcId);
         
-        if (currentMonsterStats == null) {
+        if (baseMonsterStats == null) {
             log.debug("No monster data found for NPC ID: {}", npcId);
             currentDpsResult = null;
+            specDpsResult = null;
+            currentMonsterStats = null;
             return;
         }
+
+        currentMonsterStats = new LiveMonsterContextProvider(client, targetNpc).enrich(baseMonsterStats);
 
         playerState.setOnSlayerTask(config.onSlayerTask());
         playerState.setChargeSpellActive(config.chargeSpell());
@@ -492,7 +498,43 @@ public class DpsCalcPlugin extends Plugin {
     }
 
     private CombatStyle reconstructCombatStyle(String name, String stance) {
-        return CombatStyle.findByNameAndStance(name, stance);
+        if (name == null || stance == null) {
+            return CombatStyle.UNARMED_PUNCH;
+        }
+
+        CombatStyle matchByBoth = null;
+        CombatStyle matchByName = null;
+
+        try {
+            for (Field field : CombatStyle.class.getDeclaredFields()) {
+                if (Modifier.isStatic(field.getModifiers()) &&
+                    Modifier.isPublic(field.getModifiers()) &&
+                    field.getType() == CombatStyle.class) {
+
+                    CombatStyle style = (CombatStyle) field.get(null);
+
+                    if (name.equals(style.getName()) && stance.equals(style.getStance())) {
+                        matchByBoth = style;
+                        break;
+                    }
+
+                    if (matchByName == null && name.equals(style.getName())) {
+                        matchByName = style;
+                    }
+                }
+            }
+        } catch (IllegalAccessException e) {
+            log.warn("Failed to access CombatStyle fields via reflection", e);
+        }
+
+        if (matchByBoth != null) {
+            return matchByBoth;
+        }
+        if (matchByName != null) {
+            return matchByName;
+        }
+
+        return CombatStyle.UNARMED_PUNCH;
     }
 
     private Prayer getBestOffensivePrayer(CombatStyle style) {

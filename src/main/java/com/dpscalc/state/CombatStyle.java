@@ -63,46 +63,6 @@ public class CombatStyle {
     // Default/fallback
     public static final CombatStyle UNARMED_PUNCH = new CombatStyle("Punch", AttackType.CRUSH, "Accurate", 3, 0, 0, 0, 0);
 
-    private static final CombatStyle[] STYLES = {
-        MELEE_ACCURATE_STAB,
-        MELEE_ACCURATE_SLASH,
-        MELEE_ACCURATE_CRUSH,
-        MELEE_AGGRESSIVE_SLASH,
-        MELEE_AGGRESSIVE_CRUSH,
-        MELEE_AGGRESSIVE_STAB,
-        MELEE_CONTROLLED_STAB,
-        MELEE_CONTROLLED_SLASH,
-        MELEE_DEFENSIVE_STAB,
-        MELEE_DEFENSIVE_SLASH,
-        MELEE_DEFENSIVE_CRUSH,
-        RANGED_ACCURATE,
-        RANGED_RAPID,
-        RANGED_LONGRANGE,
-        MAGIC_ACCURATE,
-        MAGIC_LONGRANGE,
-        MAGIC_AUTOCAST,
-        MAGIC_DEFENSIVE_AUTOCAST,
-        UNARMED_PUNCH
-    };
-
-    public static CombatStyle findByNameAndStance(String name, String stance) {
-        if (name == null || stance == null) {
-            return UNARMED_PUNCH;
-        }
-
-        CombatStyle matchByName = null;
-        for (CombatStyle style : STYLES) {
-            if (name.equals(style.getName()) && stance.equals(style.getStance())) {
-                return style;
-            }
-            if (matchByName == null && name.equals(style.getName())) {
-                matchByName = style;
-            }
-        }
-
-        return matchByName == null ? UNARMED_PUNCH : matchByName;
-    }
-
     @Override
     public String toString() {
         return name + " (" + stance + ")";

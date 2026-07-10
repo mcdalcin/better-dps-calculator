@@ -52,14 +52,14 @@ public class GearSnapshotCalculationTest {
             itemNames[EquipmentSlot.HEAD.getIndex()] = "Bandos helmet";
             itemIds[EquipmentSlot.BODY.getIndex()] = 11832;  // Bandos chestplate
             itemNames[EquipmentSlot.BODY.getIndex()] = "Bandos chestplate";
-            
+
             // Fill remaining slots with -1 (empty)
             for (int i = 0; i < 14; i++) {
                 if (itemIds[i] == 0) {
                     itemIds[i] = -1;
                 }
             }
-            
+
             GearSnapshot snapshot = new GearSnapshotBuilder()
                 .withEquipment(itemIds, itemNames)
                 .withCombatStyleName("Slash")
@@ -543,7 +543,43 @@ public class GearSnapshotCalculationTest {
         }
         
         private CombatStyle reconstructCombatStyle(String name, String stance) {
-            return CombatStyle.findByNameAndStance(name, stance);
+            if (name == null || stance == null) {
+                return CombatStyle.UNARMED_PUNCH;
+            }
+
+            CombatStyle matchByBoth = null;
+            CombatStyle matchByName = null;
+
+            try {
+                for (java.lang.reflect.Field field : CombatStyle.class.getDeclaredFields()) {
+                    if (java.lang.reflect.Modifier.isStatic(field.getModifiers()) &&
+                        java.lang.reflect.Modifier.isPublic(field.getModifiers()) &&
+                        field.getType() == CombatStyle.class) {
+
+                        CombatStyle style = (CombatStyle) field.get(null);
+
+                        if (name.equals(style.getName()) && stance.equals(style.getStance())) {
+                            matchByBoth = style;
+                            break;
+                        }
+
+                        if (matchByName == null && name.equals(style.getName())) {
+                            matchByName = style;
+                        }
+                    }
+                }
+            } catch (IllegalAccessException e) {
+                // Ignore reflection errors in tests
+            }
+
+            if (matchByBoth != null) {
+                return matchByBoth;
+            }
+            if (matchByName != null) {
+                return matchByName;
+            }
+
+            return CombatStyle.UNARMED_PUNCH;
         }
     }
 }
