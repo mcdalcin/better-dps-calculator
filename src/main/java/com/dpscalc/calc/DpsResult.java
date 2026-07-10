@@ -1,5 +1,7 @@
 package com.dpscalc.calc;
 
+import com.dpscalc.calc.distribution.AttackDistribution;
+
 public class DpsResult {
     private double dps;
     private int maxHit;
@@ -7,6 +9,7 @@ public class DpsResult {
     private int attackRoll;
     private int defenceRoll;
     private int attackSpeed;
+    private AttackDistribution attackDistribution;
     
     // Monster info for TTK calculations
     private int monsterHp;
@@ -28,6 +31,11 @@ public class DpsResult {
 
     public int getAttackSpeed() { return attackSpeed; }
     public void setAttackSpeed(int attackSpeed) { this.attackSpeed = attackSpeed; }
+
+    public AttackDistribution getAttackDistribution() { return attackDistribution; }
+    public void setAttackDistribution(AttackDistribution attackDistribution) {
+        this.attackDistribution = attackDistribution;
+    }
 
     public int getMonsterHp() { return monsterHp; }
     public void setMonsterHp(int monsterHp) { this.monsterHp = monsterHp; }

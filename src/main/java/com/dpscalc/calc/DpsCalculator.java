@@ -4,6 +4,9 @@ import com.dpscalc.data.MonsterAttribute;
 import com.dpscalc.data.MonsterConstants;
 import com.dpscalc.data.MonsterInputs;
 import com.dpscalc.data.MonsterStats;
+import com.dpscalc.calc.distribution.AttackDistribution;
+import com.dpscalc.calc.distribution.HitDistribution;
+import com.dpscalc.calc.distribution.Hitsplat;
 import com.dpscalc.state.AttackType;
 import com.dpscalc.state.CombatStyle;
 import com.dpscalc.state.EquipmentStats;
@@ -48,13 +51,20 @@ public class DpsCalculator extends BaseCalc {
         int defenceRoll = getNpcDefenceRoll();
         double hitChance = calculateHitChance(attackRoll, defenceRoll);
         int scalarMaxHit = getScalarMaxHit();
-        int maxHit = getDistributionMax(scalarMaxHit);
         int attackSpeed = getAttackSpeed();
 
+        AttackDistribution attackDistribution = null;
+        int maxHit;
         double avgDamage;
-        if (isSunspearSpec()) {
+        if (canUseBaseAttackDistribution()) {
+            attackDistribution = getBaseAttackDistribution(hitChance, scalarMaxHit);
+            maxHit = attackDistribution.getMax();
+            avgDamage = attackDistribution.getExpectedDamage();
+        } else if (isSunspearSpec()) {
+            maxHit = getDistributionMax(scalarMaxHit);
             avgDamage = hitChance * Math.floor(scalarMaxHit * 7 / 10.0);
         } else {
+            maxHit = getDistributionMax(scalarMaxHit);
             avgDamage = getExpectedDamage(hitChance, scalarMaxHit);
         }
         
@@ -66,6 +76,7 @@ public class DpsCalculator extends BaseCalc {
         result.setAttackRoll(attackRoll);
         result.setDefenceRoll(defenceRoll);
         result.setAttackSpeed(attackSpeed);
+        result.setAttackDistribution(attackDistribution);
         result.setDps(dps);
         
         return result;
@@ -360,7 +371,7 @@ public class DpsCalculator extends BaseCalc {
             additiveBonus += 15;
         }
 
-        if (isWearingSmokeStaff() && isStandardSpellSelected()) {
+        if (isWearingSmokeStaff()) {
             additiveBonus += 10;
         }
 
@@ -847,7 +858,9 @@ public class DpsCalculator extends BaseCalc {
 
         if (isWearingFang()) {
             fangMinimumHit = applyFactor(maxHit, 3, 20);
-            maxHit -= fangMinimumHit;
+            if (!usingSpecialAttack) {
+                maxHit -= fangMinimumHit;
+            }
         }
 
         if (usingSpecialAttack) {
@@ -1249,7 +1262,15 @@ public class DpsCalculator extends BaseCalc {
             maxHit = Math.max(maxHit, nonRubyBoltMax(scalarMaxHit));
         }
         if (isRubyBoltEffectApplicable()) {
-            maxHit = Math.max(maxHit, rubyBoltDamage());
+            int rubyDamage = rubyBoltDamage();
+            maxHit = isZaryteCrossbowSpec() ? rubyDamage : Math.max(maxHit, rubyDamage);
+        }
+        int simpleSpecHitCount = getSimpleSpecHitCount();
+        if (simpleSpecHitCount > 1) {
+            maxHit *= simpleSpecHitCount;
+        }
+        if (isAbyssalDaggerSpec()) {
+            maxHit += finishAccurateDamage(applyAttackerDamageScaling(scalarMaxHit));
         }
         return maxHit;
     }
@@ -1286,7 +1307,31 @@ public class DpsCalculator extends BaseCalc {
                 expected = rubyExpected * rubyChance + expected * (1.0 - rubyChance);
             }
         }
+        int simpleSpecHitCount = getSimpleSpecHitCount();
+        if (simpleSpecHitCount > 1) {
+            expected *= simpleSpecHitCount;
+        }
+        if (isAbyssalDaggerSpec()) {
+            expected += hitChance * transformedExpectedHit(1.0, getMinimumHit(scalarMaxHit), scalarMaxHit);
+        }
         return expected;
+    }
+
+    private boolean isAbyssalDaggerSpec() {
+        return usingSpecialAttack && player.isWearing("Abyssal dagger");
+    }
+
+    private int getSimpleSpecHitCount() {
+        if (!usingSpecialAttack) {
+            return 1;
+        }
+        if (player.isWearingAny("Dragon dagger", "Dragon knife", "Rosewood blowpipe") || isWearingMsb()) {
+            return 2;
+        }
+        if (player.isWearing("Webweaver bow")) {
+            return 4;
+        }
+        return 1;
     }
 
     private double transformedTripleDamageExpectedHit(double hitChance, int minHit, int maxHit) {
@@ -1305,12 +1350,32 @@ public class DpsCalculator extends BaseCalc {
         if (maxHit < minHit || maxHit < 0) {
             return 0;
         }
-        double expected = 0;
-        double probability = hitChance / (maxHit - minHit + 1);
-        for (int damage = minHit; damage <= maxHit; damage++) {
-            expected += probability * transformAccurateDamage(damage);
+        return getTransformedHitDistribution(hitChance, minHit, maxHit).getExpectedValue();
+    }
+
+    private AttackDistribution getBaseAttackDistribution(double hitChance, int scalarMaxHit) {
+        if (scalarMaxHit <= 0) {
+            return AttackDistribution.single(HitDistribution.deterministic(Hitsplat.inaccurate()));
         }
-        return expected;
+        return AttackDistribution.single(getTransformedHitDistribution(
+            hitChance, getMinimumHit(scalarMaxHit), scalarMaxHit));
+    }
+
+    private HitDistribution getTransformedHitDistribution(double hitChance, int minHit, int maxHit) {
+        return HitDistribution.linear(hitChance, minHit, maxHit).transform(hitsplat ->
+            HitDistribution.deterministic(new Hitsplat(
+                transformAccurateDamage(hitsplat.getDamage()), hitsplat.isAccurate())), false);
+    }
+
+    private boolean canUseBaseAttackDistribution() {
+        return !isSunspearSpec()
+            && !isWearingVeracs()
+            && !(isWearingScythe() && monster.getSize() >= 2)
+            && !(isUsingMeleeStyle() && isWearingKeris() && hasAttribute(MonsterAttribute.KALPHITE))
+            && !isNonRubyBoltEffectApplicable()
+            && !isRubyBoltEffectApplicable()
+            && getSimpleSpecHitCount() == 1
+            && !isAbyssalDaggerSpec();
     }
 
     private int transformAccurateDamage(int damage) {
@@ -1795,7 +1860,7 @@ public class DpsCalculator extends BaseCalc {
     private int applyTwistedBowScaling(int value, boolean isAccuracy) {
         if (monster == null) return value;
         
-        int monsterMagic = Math.max(monster.getMagicLevel(), monster.getOffensiveMagic());
+        int monsterMagic = Math.max(getReducedMonsterStats().magicLevel, monster.getOffensiveMagic());
         int cap = hasAttribute(MonsterAttribute.XERICIAN) ? 350 : 250;
         monsterMagic = Math.min(cap, monsterMagic);
 

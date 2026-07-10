@@ -354,8 +354,9 @@ public class DpsCalculatorTest {
                 .build();
 
             DpsCalculator calc = new DpsCalculator(player, monster);
+            int defRoll = calc.getNpcDefenceRoll();
 
-            assertEquals(49896, calc.getNpcDefenceRoll());
+            assertEquals(49896, defRoll);
         }
     }
 
@@ -1974,6 +1975,38 @@ public class DpsCalculatorTest {
             // Xerician monsters have 350 cap instead of 250
             assertTrue("Tbow should hit harder vs xerician monsters with high magic", 
                 calcXeric.getMaxHit() > calcNormal.getMaxHit());
+        }
+    }
+
+    public static class DistributionAdapterCharacterization {
+
+        @Test
+        public void ordinaryAttackPreservesScalarMaxExpectedDamageAndDps() {
+            MonsterStats monster = monster()
+                .name("Low defence target")
+                .defenceLevel(1)
+                .slashDefence(0)
+                .build();
+            PlayerState player = player()
+                .attackLevel(99)
+                .strengthLevel(99)
+                .slashAttack(82)
+                .meleeStrength(82)
+                .weapon("Abyssal whip")
+                .combatStyle(CombatStyle.MELEE_ACCURATE_SLASH)
+                .weaponSpeed(4)
+                .build();
+
+            DpsResult result = new DpsCalculator(player, monster).calculate();
+
+            assertEquals(24, result.getMaxHit());
+            assertEquals(0.98001369777722436, result.getAccuracy(), 0.0);
+            assertEquals(12.250171222215304, result.getAverageDamagePerAttack(), 0.0);
+            assertEquals(4.9164020505157415, result.getDps(), 0.0);
+            assertNotNull(result.getAttackDistribution());
+            assertEquals(24, result.getAttackDistribution().getMax());
+            assertEquals(11.79936492123778,
+                result.getAttackDistribution().getExpectedDamage(), 0.0);
         }
     }
 }
