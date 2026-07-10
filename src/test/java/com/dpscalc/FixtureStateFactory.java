@@ -6,8 +6,6 @@ import com.dpscalc.data.MonsterStats;
 import com.dpscalc.data.WeaknessElement;
 import com.dpscalc.state.AttackType;
 import com.dpscalc.state.CombatStyle;
-import com.dpscalc.state.EquipmentSlot;
-import com.dpscalc.state.EquipmentStats;
 import com.dpscalc.state.PlayerState;
 import com.dpscalc.state.Prayer;
 import com.google.gson.JsonArray;
@@ -15,18 +13,17 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 
 final class FixtureStateFactory {
-    private static final int SLOT_COUNT = 14;
-    private static final Map<String, EquipmentSlot> SLOT_MAP = buildSlotMap();
-
     private FixtureStateFactory() {}
 
     static PlayerState buildPlayer(JsonObject playerJson) {
+        return buildPlayer(playerJson, -1);
+    }
+
+    static PlayerState buildPlayer(JsonObject playerJson, int monsterId) {
         PlayerState state = new PlayerState();
         JsonObject skills = playerJson.getAsJsonObject("skills");
         state.setAttackLevel(getInt(skills, "atk"));
@@ -54,19 +51,9 @@ final class FixtureStateFactory {
         if (has(buffs, "markOfDarknessSpell")) state.setMarkOfDarknessActive(buffs.get("markOfDarknessSpell").getAsBoolean());
         if (has(buffs, "soulreaperStacks")) state.setSoulreaperStacks(getInt(buffs, "soulreaperStacks"));
 
-        JsonObject equipment = playerJson.getAsJsonObject("equipment");
-        state.setEquipmentStats(buildEquipmentStats(equipment.getAsJsonObject("stats")));
-        state.setEquippedItemIds(buildItemIds(equipment.getAsJsonObject("itemIds")));
-        state.setEquippedItemNames(buildItemNames(equipment.getAsJsonObject("itemNames")));
-        state.setEquippedItemVersions(buildItemField(equipment.getAsJsonObject("slots"), "version"));
-        state.setEquippedItemCategories(buildItemField(equipment.getAsJsonObject("slots"), "category"));
         CombatStyle style = buildCombatStyle(playerJson.getAsJsonObject("style"));
         applySpell(state, playerJson.get("spell"));
-        int weaponSpeed = getInt(equipment, "weaponSpeed");
-        if ("Rapid".equals(style.getStance())) {
-            weaponSpeed += 1;
-        }
-        state.setWeaponSpeed(weaponSpeed);
+        FixtureEquipmentAdapter.apply(state, playerJson, monsterId);
         state.setCombatStyle(style);
         state.setActivePrayers(buildPrayers(playerJson.getAsJsonArray("prayers")));
         return state;
@@ -76,11 +63,13 @@ final class FixtureStateFactory {
         if (spellElement == null || spellElement.isJsonNull()) {
             return;
         }
+        if (spellElement.isJsonPrimitive()) {
+            state.setSpellName(spellElement.getAsString());
+            return;
+        }
         JsonObject spell = spellElement.getAsJsonObject();
-        state.setSpellName(getString(spell, "name"));
-        state.setSpellbook(getString(spell, "spellbook"));
-        state.setSpellElement(getString(spell, "element"));
-        state.setSpellMaxHit(getInt(spell, "max_hit"));
+        state.setSpellName(getString(spell, "name")); state.setSpellbook(getString(spell, "spellbook"));
+        state.setSpellElement(getString(spell, "element")); state.setSpellMaxHit(getInt(spell, "max_hit"));
     }
 
     static MonsterStats buildMonster(JsonObject monsterJson) {
@@ -120,57 +109,6 @@ final class FixtureStateFactory {
             monster.setWeaknessSeverity(getInt(weakness, "severity"));
         }
         return monster;
-    }
-
-    private static EquipmentStats buildEquipmentStats(JsonObject statsJson) {
-        JsonObject bonuses = statsJson.getAsJsonObject("bonuses");
-        JsonObject offensive = statsJson.getAsJsonObject("offensive");
-        JsonObject defensive = statsJson.getAsJsonObject("defensive");
-        EquipmentStats stats = new EquipmentStats();
-        stats.setStabAttack(getInt(offensive, "stab"));
-        stats.setSlashAttack(getInt(offensive, "slash"));
-        stats.setCrushAttack(getInt(offensive, "crush"));
-        stats.setMagicAttack(getInt(offensive, "magic"));
-        stats.setRangedAttack(getInt(offensive, "ranged"));
-        stats.setMeleeStrength(getInt(bonuses, "str"));
-        stats.setRangedStrength(getInt(bonuses, "ranged_str"));
-        stats.setMagicDamage(getInt(bonuses, "magic_str"));
-        stats.setPrayerBonus(getInt(bonuses, "prayer"));
-        stats.setStabDefence(getInt(defensive, "stab"));
-        stats.setSlashDefence(getInt(defensive, "slash"));
-        stats.setCrushDefence(getInt(defensive, "crush"));
-        stats.setMagicDefence(getInt(defensive, "magic"));
-        stats.setRangedDefence(getInt(defensive, "ranged"));
-        return stats;
-    }
-
-    private static int[] buildItemIds(JsonObject idsJson) {
-        int[] itemIds = new int[SLOT_COUNT];
-        for (Map.Entry<String, EquipmentSlot> entry : SLOT_MAP.entrySet()) {
-            itemIds[entry.getValue().getIndex()] = getInt(idsJson, entry.getKey());
-        }
-        return itemIds;
-    }
-
-    private static String[] buildItemNames(JsonObject namesJson) {
-        String[] itemNames = new String[SLOT_COUNT];
-        for (Map.Entry<String, EquipmentSlot> entry : SLOT_MAP.entrySet()) {
-            JsonElement value = namesJson.get(entry.getKey());
-            itemNames[entry.getValue().getIndex()] = value == null || value.isJsonNull() ? null : value.getAsString();
-        }
-        return itemNames;
-    }
-
-    private static String[] buildItemField(JsonObject slotsJson, String field) {
-        String[] values = new String[SLOT_COUNT];
-        for (Map.Entry<String, EquipmentSlot> entry : SLOT_MAP.entrySet()) {
-            JsonElement slot = slotsJson.get(entry.getKey());
-            if (slot != null && slot.isJsonObject()) {
-                JsonElement value = slot.getAsJsonObject().get(field);
-                values[entry.getValue().getIndex()] = value == null || value.isJsonNull() ? null : value.getAsString();
-            }
-        }
-        return values;
     }
 
     private static Set<Prayer> buildPrayers(JsonArray prayersJson) {
@@ -259,39 +197,13 @@ final class FixtureStateFactory {
         }
     }
 
-    private static Map<String, EquipmentSlot> buildSlotMap() {
-        Map<String, EquipmentSlot> slots = new HashMap<>();
-        slots.put("head", EquipmentSlot.HEAD);
-        slots.put("cape", EquipmentSlot.CAPE);
-        slots.put("neck", EquipmentSlot.AMULET);
-        slots.put("weapon", EquipmentSlot.WEAPON);
-        slots.put("body", EquipmentSlot.BODY);
-        slots.put("shield", EquipmentSlot.SHIELD);
-        slots.put("legs", EquipmentSlot.LEGS);
-        slots.put("hands", EquipmentSlot.GLOVES);
-        slots.put("feet", EquipmentSlot.BOOTS);
-        slots.put("ring", EquipmentSlot.RING);
-        slots.put("ammo", EquipmentSlot.AMMO);
-        return slots;
-    }
+    private static boolean has(JsonObject json, String key) { return json != null && json.has(key) && !json.get(key).isJsonNull(); }
 
-    private static boolean has(JsonObject json, String key) {
-        return json != null && json.has(key) && !json.get(key).isJsonNull();
-    }
+    private static int getInt(JsonObject json, String key) { return has(json, key) ? json.get(key).getAsInt() : 0; }
 
-    private static int getInt(JsonObject json, String key) {
-        return has(json, key) ? json.get(key).getAsInt() : 0;
-    }
+    private static int getBooleanAsInt(JsonObject json, String key) { return has(json, key) && json.get(key).getAsBoolean() ? 1 : 0; }
 
-    private static int getBooleanAsInt(JsonObject json, String key) {
-        return has(json, key) && json.get(key).getAsBoolean() ? 1 : 0;
-    }
+    private static String getString(JsonObject json, String key) { return has(json, key) ? json.get(key).getAsString() : ""; }
 
-    private static String getString(JsonObject json, String key) {
-        return has(json, key) ? json.get(key).getAsString() : "";
-    }
-
-    private static String toEnumName(String name) {
-        return name.toUpperCase(Locale.ROOT).replace(' ', '_').replace('-', '_');
-    }
+    private static String toEnumName(String name) { return name.toUpperCase(Locale.ROOT).replace(' ', '_').replace('-', '_'); }
 }
