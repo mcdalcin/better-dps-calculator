@@ -19,7 +19,7 @@ public class BaseCalc {
     public static double getNormalAccuracyRoll(int atk, int def) {
         int attack = atk;
         int defence = def;
-        
+
         if (attack < 0) attack = Math.min(0, attack + 2);
         if (defence < 0) defence = Math.min(0, defence + 2);
 
@@ -70,7 +70,7 @@ public class BaseCalc {
     public static double getFixedAttackHitChance(int atk, int def) {
         int attack = atk;
         int defence = def;
-        
+
         if (attack < 0) attack = Math.min(0, attack + 2);
         if (defence < 0) defence = Math.min(0, defence + 2);
 
