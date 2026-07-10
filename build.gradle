@@ -6,9 +6,6 @@ repositories {
     mavenLocal()
     maven {
         url = 'https://repo.runelite.net'
-        content {
-            includeGroupByRegex("net\\.runelite.*")
-        }
     }
     mavenCentral()
 }
@@ -25,7 +22,8 @@ dependencies {
     testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion
     testImplementation group: 'net.runelite', name: 'jshell', version: runeLiteVersion
 
-    testImplementation 'com.google.code.gson:gson:2.10.1'
+    // Gson for JSON parsing
+    implementation 'com.google.code.gson:gson:2.10.1'
 }
 
 group = 'com.dpscalc'
@@ -39,6 +37,35 @@ tasks.withType(JavaCompile) {
 
 test {
     useJUnit()
+    if (project.hasProperty('fixtureFuzzCount')) {
+        systemProperty 'fixtureFuzz.count', project.property('fixtureFuzzCount')
+    }
+    if (project.hasProperty('fixtureFuzzSeed')) {
+        systemProperty 'fixtureFuzz.seed', project.property('fixtureFuzzSeed')
+    }
+    if (project.hasProperty('fixtureFuzzIndex')) {
+        systemProperty 'fixtureFuzz.index', project.property('fixtureFuzzIndex')
+    }
+    if (project.hasProperty('fixtureFuzzSurface')) {
+        systemProperty 'fixtureFuzz.surface', project.property('fixtureFuzzSurface')
+    } else if (System.getProperty('fixtureFuzz.surface') != null) {
+        systemProperty 'fixtureFuzz.surface', System.getProperty('fixtureFuzz.surface')
+    }
+    testLogging {
+        events "passed", "skipped", "failed"
+        showStandardStreams = true
+    }
+}
+
+task fixtureFuzzTest(type: Test) {
+    useJUnit()
+    include '**/FixtureFuzzReplayTest.class'
+    systemProperty 'fixtureFuzz.count', project.findProperty('fixtureFuzzCount') ?: '100'
+    systemProperty 'fixtureFuzz.seed', project.findProperty('fixtureFuzzSeed') ?: '0x5eed2026'
+    systemProperty 'fixtureFuzz.surface', project.findProperty('fixtureFuzzSurface') ?: System.getProperty('fixtureFuzz.surface', 'baseline')
+    if (project.hasProperty('fixtureFuzzIndex')) {
+        systemProperty 'fixtureFuzz.index', project.property('fixtureFuzzIndex')
+    }
     testLogging {
         events "passed", "skipped", "failed"
         showStandardStreams = true

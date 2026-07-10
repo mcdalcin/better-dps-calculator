@@ -37,9 +37,7 @@ public class MonsterDataManager {
     private static final String ETAG_FILENAME = "dpscalc-monsters.etag";
     
     private final Map<Integer, MonsterStats> monstersById = new ConcurrentHashMap<>();
-    
-    @Inject
-    private Gson gson;
+    private final Gson gson = new Gson();
     
     @Getter
     private volatile boolean loaded = false;
