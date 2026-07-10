@@ -20,6 +20,8 @@ Do not implement new upstream parity behavior directly here first. Start in the 
 - Overlay and side-panel views for current target DPS
 - Gear snapshot comparison tools
 - Prayer, boost, slayer, salve, void, and common special weapon mechanics
+- Reference-backed equipment resolution for loadouts, stat totals, ammo applicability, attack speed, and supported item variables
+- Hit-distribution primitives used by verified multi-hit and expected-damage calculations
 - Fixture-backed parity with the OSRS Wiki DPS Calculator for the currently synced reference commit
 - Bundled monster data with runtime refresh from the OSRS DPS calculator data source
 
@@ -31,7 +33,7 @@ Do not implement new upstream parity behavior directly here first. Start in the 
 - Root `icon.png` for Plugin Hub listing
 - Runtime resources loaded from the plugin jar via resource streams
 - No runtime reflection lookup for combat styles
-- No custom third-party runtime dependency in `build.gradle`
+- Gson is the only custom third-party runtime dependency; `implementation` scope is required because the production equipment-domain catalog parses bundled JSON at runtime
 
 ## Build, Test, And Run
 
@@ -40,7 +42,7 @@ Use Java 11.
 Build and test exactly as CI does:
 
 ```bash
-JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64 ./gradlew --no-daemon clean build
+JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64 ./gradlew --no-daemon --max-workers=1 clean build
 ```
 
 Run tests without cleaning:
@@ -62,17 +64,17 @@ When new code lands in the Wiki calculator, do not start in this repo. Use this 
 1. Go to the sync workspace.
 
    ```bash
-   cd /home/matth/git/osrs-dps-calc
+   cd /home/matth/git/better-dps-calculator-sync
    ```
 
 2. Update the upstream reference and generate fixtures there.
 
    The sync workspace docs describe the authoritative workflow:
 
-   - `/home/matth/git/osrs-dps-calc/README.md`
-   - `/home/matth/git/osrs-dps-calc/runelite-plugin/README.md`
-   - `/home/matth/git/osrs-dps-calc/runelite-plugin/SYNC_STATUS.md`
-   - `/home/matth/git/osrs-dps-calc/sync-tests/README.md`
+   - `/home/matth/git/better-dps-calculator-sync/README.md`
+   - `/home/matth/git/better-dps-calculator-sync/runelite-plugin/README.md`
+   - `/home/matth/git/better-dps-calculator-sync/runelite-plugin/SYNC_STATUS.md`
+   - `/home/matth/git/better-dps-calculator-sync/sync-tests/README.md`
 
 3. In the sync workspace, update scenarios/generator/Java parity code until all required checks pass.
 
@@ -86,7 +88,7 @@ When new code lands in the Wiki calculator, do not start in this repo. Use this 
 
 4. Copy only review-ready plugin payload changes into this repo.
 
-   Copy from `/home/matth/git/osrs-dps-calc/runelite-plugin` into this repository. Do not copy the sync repo's `reference/`, `sync-tests/`, root README, or sync-only GitHub workflow files.
+   Copy from `/home/matth/git/better-dps-calculator-sync/runelite-plugin` into this repository. Do not copy the sync repo's `reference/`, `sync-tests/`, root README, or sync-only GitHub workflow files.
 
    Before copying, identify the intended file set. Typical copied areas are:
 
@@ -99,7 +101,7 @@ When new code lands in the Wiki calculator, do not start in this repo. Use this 
 5. Validate this standalone repo.
 
    ```bash
-   JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64 ./gradlew --no-daemon clean build
+   JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64 ./gradlew --no-daemon --max-workers=1 clean build
    ```
 
 6. Update this repo's docs.
@@ -114,8 +116,11 @@ When new code lands in the Wiki calculator, do not start in this repo. Use this 
 
 - Reference repository: `https://github.com/weirdgloop/osrs-dps-calc`
 - Sync workspace: `https://github.com/mcdalcin/better-dps-calculator-sync`
-- Synced reference commit: `1bebf1330bc3a81394819e8ae6ba8a4d4ae80328`
-- Last verified: 2026-07-09
+- Synced reference commit: `b6bc098dc0d742b2b763375d2e78e1b611a22070`
+- Deterministic reference fixtures: 146
+- Last verified: 2026-07-10
+
+This milestone verifies the included deterministic equipment and distribution coverage; it does not claim complete calculator parity. Expanded seeded fuzz replay and the remaining live/unimplemented areas listed in [SYNC_STATUS.md](SYNC_STATUS.md) are still open.
 
 See [SYNC_STATUS.md](SYNC_STATUS.md) for current parity notes, validation evidence, update requirements, and known gaps.
 
