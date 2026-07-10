@@ -42,6 +42,8 @@ public class DpsCalcPanel extends PluginPanel {
     private final JLabel monsterDefLabel = new JLabel();
     
     private final JLabel dpsLabel = new JLabel();
+    private final JTextArea diagnosticsText = new JTextArea();
+    private JPanel diagnosticsPanel;
 
     private final List<GearSnapshot> snapshots = new ArrayList<>();
     private final List<DpsComparison> comparisons = new ArrayList<>();
@@ -105,6 +107,10 @@ public class DpsCalcPanel extends PluginPanel {
         useTargetBtn.setFont(FontManager.getRunescapeSmallFont());
         useTargetBtn.addActionListener(e -> switchToLiveMode());
         contentPanel.add(useTargetBtn);
+
+        contentPanel.add(Box.createVerticalStrut(10));
+        diagnosticsPanel = createDiagnosticsSection();
+        contentPanel.add(diagnosticsPanel);
 
         JScrollPane scrollPane = new JScrollPane(contentPanel);
         scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
@@ -218,6 +224,43 @@ public class DpsCalcPanel extends PluginPanel {
         return wrapper;
     }
 
+    private JPanel createDiagnosticsSection() {
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.setBackground(CARD_BACKGROUND);
+        wrapper.setBorder(BorderFactory.createCompoundBorder(
+            new MatteBorder(0, 4, 0, 0, MUTED_TEXT),
+            new EmptyBorder(8, 10, 8, 8)
+        ));
+        wrapper.setAlignmentX(Component.CENTER_ALIGNMENT);
+        wrapper.setVisible(false);
+
+        JLabel title = new JLabel("DIAGNOSTICS");
+        title.setFont(FontManager.getRunescapeSmallFont());
+        title.setForeground(MUTED_TEXT);
+        wrapper.add(title, BorderLayout.NORTH);
+
+        diagnosticsText.setEditable(false);
+        diagnosticsText.setLineWrap(true);
+        diagnosticsText.setWrapStyleWord(true);
+        diagnosticsText.setOpaque(true);
+        diagnosticsText.setBackground(CARD_BACKGROUND);
+        diagnosticsText.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+        diagnosticsText.setCaretColor(ColorScheme.LIGHT_GRAY_COLOR);
+        diagnosticsText.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 10));
+        diagnosticsText.setBorder(new EmptyBorder(6, 0, 0, 0));
+
+        JScrollPane diagnosticsScroll = new JScrollPane(diagnosticsText);
+        diagnosticsScroll.setBorder(null);
+        diagnosticsScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        diagnosticsScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+        diagnosticsScroll.getViewport().setBackground(CARD_BACKGROUND);
+        diagnosticsScroll.setPreferredSize(new Dimension(0, 220));
+        diagnosticsScroll.getVerticalScrollBar().setPreferredSize(new Dimension(8, 0));
+        wrapper.add(diagnosticsScroll, BorderLayout.CENTER);
+
+        return wrapper;
+    }
+
     public void switchToLiveMode() {
         manualMode = false;
         updateLoop();
@@ -249,7 +292,10 @@ public class DpsCalcPanel extends PluginPanel {
             return;
         }
 
-        MonsterStats stats = monsterDataManager.getMonster(target.getId());
+        MonsterStats stats = plugin.getCurrentMonsterStats();
+        if (stats == null) {
+            stats = monsterDataManager.getMonster(target.getId());
+        }
         if (stats != null) {
             selectedMonster = stats;
             updateDisplay(stats);
@@ -274,11 +320,12 @@ public class DpsCalcPanel extends PluginPanel {
 
         DpsResult result = plugin.calculateDps(monster, bestPrayer, maxBoosts);
          
-         if (result != null) {
-             dpsLabel.setText(String.format("%.2f", result.getDps()));
-         } else {
-             dpsLabel.setText("-");
-         }
+        if (result != null) {
+            dpsLabel.setText(String.format("%.2f", result.getDps()));
+        } else {
+            dpsLabel.setText("-");
+        }
+        updateDiagnostics(monster, result, bestPrayer, maxBoosts);
     }
 
     private void resetDisplay() {
@@ -286,10 +333,49 @@ public class DpsCalcPanel extends PluginPanel {
         monsterStatsLabel.setText("HP: - | Cmb: -");
         monsterDefLabel.setText("Def: -/-/- (S/S/C)");
         dpsLabel.setText("-");
+        updateDiagnostics(null, null, config.useBestOffensivePrayer(), config.assumeMaxBoosts());
         
         if (comparisonDialog != null && comparisonDialog.isVisible()) {
             comparisonDialog.updateMonster(null);
         }
+    }
+
+    private void updateDiagnostics(MonsterStats monster, DpsResult panelResult, boolean bestPrayer, boolean maxBoosts) {
+        boolean enabled = config.showPanelDiagnostics();
+        diagnosticsPanel.setVisible(enabled);
+        if (!enabled) {
+            diagnosticsText.setText("");
+            return;
+        }
+
+        NPC target = plugin.getTargetNpc();
+        DpsDiagnosticsFormatter.TargetInfo targetInfo = targetInfo(target, monster);
+        DpsDiagnosticsFormatter.SettingsInfo settingsInfo = new DpsDiagnosticsFormatter.SettingsInfo(
+            bestPrayer,
+            maxBoosts,
+            config.onSlayerTask(),
+            config.chargeSpell()
+        );
+
+        diagnosticsText.setText(DpsDiagnosticsFormatter.format(DpsDiagnosticsFormatter.snapshot()
+            .withTarget(targetInfo)
+            .withMonster(monster)
+            .withPlayer(plugin.getCachedPlayerState())
+            .withSettings(settingsInfo)
+            .withPanelResult(panelResult)
+            .withLiveResult(plugin.getCurrentDpsResult())
+            .withSpecResult(plugin.getSpecDpsResult())));
+        diagnosticsText.setCaretPosition(0);
+    }
+
+    private DpsDiagnosticsFormatter.TargetInfo targetInfo(NPC target, MonsterStats monster) {
+        if (target != null) {
+            return new DpsDiagnosticsFormatter.TargetInfo(target.getId(), target.getName(), target.getIndex(), "live");
+        }
+        if (manualMode && monster != null) {
+            return new DpsDiagnosticsFormatter.TargetInfo(monster.getId(), monster.getName(), -1, "manual");
+        }
+        return new DpsDiagnosticsFormatter.TargetInfo(-1, null, -1, "none");
     }
 
     private int calculateCombatLevel(MonsterStats m) {

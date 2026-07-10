@@ -121,6 +121,18 @@ public interface DpsCalcConfig extends Config {
         return true;
     }
 
+    @ConfigItem(
+        keyName = "showPanelDiagnostics",
+        name = "Show Panel Diagnostics",
+        description = "Display side-panel diagnostic state for live DPS input troubleshooting",
+        section = overlaySection,
+        position = 5,
+        hidden = true
+    )
+    default boolean showPanelDiagnostics() {
+        return false;
+    }
+
     // ==================== DPS STATS SECTION ====================
 
     @ConfigItem(
