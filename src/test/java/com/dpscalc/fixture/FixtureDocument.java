@@ -1,5 +1,8 @@
 package com.dpscalc.fixture;
 
+import com.dpscalc.parity.ParityOutput;
+import com.google.gson.JsonObject;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -10,18 +13,22 @@ public final class FixtureDocument {
     private final int schemaVersion;
     private final String webCalcCommit;
     private final String equipmentDomainDigest;
+    private final int declaredCount;
     private final List<FixtureCase> fixtures;
 
-    FixtureDocument(int schemaVersion, String webCalcCommit, String equipmentDomainDigest, List<FixtureCase> fixtures) {
+    FixtureDocument(int schemaVersion, String webCalcCommit, String equipmentDomainDigest,
+                    int declaredCount, List<FixtureCase> fixtures) {
         this.schemaVersion = schemaVersion;
         this.webCalcCommit = webCalcCommit;
         this.equipmentDomainDigest = equipmentDomainDigest;
+        this.declaredCount = declaredCount;
         this.fixtures = Collections.unmodifiableList(new ArrayList<>(fixtures));
     }
 
     public int getSchemaVersion() { return schemaVersion; }
     public String getWebCalcCommit() { return webCalcCommit; }
     public String getEquipmentDomainDigest() { return equipmentDomainDigest; }
+    public int getDeclaredCount() { return declaredCount; }
     public List<FixtureCase> getFixtures() { return fixtures; }
 
     public static final class FixtureCase {
@@ -30,15 +37,18 @@ public final class FixtureDocument {
         private final String category;
         private final String source;
         private final FixtureInputs inputs;
-        private final Map<String, Double> outputs;
+        private final ParityOutput outputs;
+        private final JsonObject fixtureJson;
 
-        FixtureCase(String id, String name, String category, String source, FixtureInputs inputs, Map<String, Double> outputs) {
+        FixtureCase(String id, String name, String category, String source, FixtureInputs inputs,
+                    ParityOutput outputs, JsonObject fixtureJson) {
             this.id = id;
             this.name = name;
             this.category = category;
             this.source = source;
             this.inputs = inputs;
-            this.outputs = immutableMap(outputs);
+            this.outputs = outputs;
+            this.fixtureJson = fixtureJson.deepCopy();
         }
 
         public String getId() { return id; }
@@ -46,7 +56,8 @@ public final class FixtureDocument {
         public String getCategory() { return category; }
         public String getSource() { return source; }
         public FixtureInputs getInputs() { return inputs; }
-        public Map<String, Double> getOutputs() { return outputs; }
+        public ParityOutput getOutputs() { return outputs; }
+        public JsonObject getFixtureJson() { return fixtureJson.deepCopy(); }
     }
 
     public static final class FixtureInputs {

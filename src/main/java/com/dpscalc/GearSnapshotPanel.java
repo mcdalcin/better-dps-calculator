@@ -197,7 +197,7 @@ public class GearSnapshotPanel extends JPanel {
             return;
         }
 
-        PlayerState playerState = plugin.snapshotToPlayerState(snapshot);
+        PlayerState playerState = plugin.snapshotToPlayerState(snapshot, currentMonster);
         if (playerState == null) {
             cachedDpsResult = null;
             updateDpsLabel();
@@ -511,7 +511,7 @@ public class GearSnapshotPanel extends JPanel {
             panel.add(specLabel);
             panel.add(Box.createVerticalStrut(5));
             
-            PlayerState playerState = plugin.snapshotToPlayerState(snapshot);
+            PlayerState playerState = plugin.snapshotToPlayerState(snapshot, currentMonster);
             if (playerState != null && currentMonster != null) {
                 DpsCalculator specCalc = new DpsCalculator(playerState, currentMonster, true);
                 DpsResult specResult = specCalc.calculate();

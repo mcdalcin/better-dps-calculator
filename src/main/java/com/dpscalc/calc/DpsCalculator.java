@@ -4,22 +4,25 @@ import com.dpscalc.data.MonsterAttribute;
 import com.dpscalc.data.MonsterConstants;
 import com.dpscalc.data.MonsterInputs;
 import com.dpscalc.data.MonsterStats;
+import com.dpscalc.equipment.AmmoApplicability;
 import com.dpscalc.calc.distribution.AttackDistribution;
 import com.dpscalc.calc.distribution.HitDistribution;
 import com.dpscalc.calc.distribution.Hitsplat;
+import com.dpscalc.calc.distribution.WeightedHit;
 import com.dpscalc.state.AttackType;
 import com.dpscalc.state.CombatStyle;
 import com.dpscalc.state.EquipmentStats;
 import com.dpscalc.state.PlayerState;
 import com.dpscalc.state.Prayer;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 
 public class DpsCalculator extends BaseCalc {
 
     private static final double SECONDS_PER_TICK = 0.6;
-    private static final int[] CROSSBOW_WEAPON_IDS = {837, 767, 9174, 9176, 9177, 9179, 9181, 9183, 9185, 21902, 8880, 10156, 4734, 21012, 11785, 26374};
-    private static final int[] NO_AMMO_RANGED_WEAPON_IDS = {12924, 12926, 22547, 22550, 23983, 23985, 24123, 27652, 27655, 25862, 25865};
 
     private boolean usingSpecialAttack;
     private int fangMinimumHit;
@@ -40,43 +43,47 @@ public class DpsCalculator extends BaseCalc {
             return result;
         }
 
-        if (isImmune()) {
-            result.setMaxHit(0);
-            result.setAccuracy(0);
-            result.setDps(0);
-            return result;
-        }
-
         int attackRoll = getMaxAttackRoll();
         int defenceRoll = getNpcDefenceRoll();
         double hitChance = calculateHitChance(attackRoll, defenceRoll);
-        int scalarMaxHit = getScalarMaxHit();
         int attackSpeed = getAttackSpeed();
 
-        AttackDistribution attackDistribution = null;
-        int maxHit;
-        double avgDamage;
-        if (canUseBaseAttackDistribution()) {
-            attackDistribution = getBaseAttackDistribution(hitChance, scalarMaxHit);
-            maxHit = attackDistribution.getMax();
-            avgDamage = attackDistribution.getExpectedDamage();
-        } else if (isSunspearSpec()) {
-            maxHit = getDistributionMax(scalarMaxHit);
-            avgDamage = hitChance * Math.floor(scalarMaxHit * 7 / 10.0);
-        } else {
-            maxHit = getDistributionMax(scalarMaxHit);
-            avgDamage = getExpectedDamage(hitChance, scalarMaxHit);
+        if (isImmune()) {
+            result.setAttackRoll(attackRoll);
+            result.setDefenceRoll(defenceRoll);
+            result.setAttackSpeed(attackSpeed);
+            result.setAttackDistribution(getBaseAttackDistribution(hitChance, 0));
+            result.setAccuracy(hitChance);
+            result.setExpectedAttackSpeed(attackSpeed);
+            return result;
         }
-        
-        double attacksPerSecond = 1.0 / (attackSpeed * SECONDS_PER_TICK);
-        double dps = avgDamage * attacksPerSecond;
 
-        result.setMaxHit(maxHit);
+        int scalarMaxHit = getScalarMaxHit();
+
+        AttackDistribution attackDistribution = getAttackDistribution(hitChance, scalarMaxHit);
+        int directMaxHit = attackDistribution.getMax();
+        double expectedDirectDamage = attackDistribution.getExpectedDamage();
+        int dotMaxHit = getDotMaxHit();
+        double expectedDotDamage = getExpectedDotDamage(hitChance);
+        double expectedAttackSpeed = attackSpeed;
+        double expectedDamage = expectedDirectDamage + expectedDotDamage;
+        
+        double damagePerTick = expectedDamage / expectedAttackSpeed;
+        double dps = damagePerTick / SECONDS_PER_TICK;
+
+        result.setMaxHit(directMaxHit + dotMaxHit);
         result.setAccuracy(hitChance);
         result.setAttackRoll(attackRoll);
         result.setDefenceRoll(defenceRoll);
         result.setAttackSpeed(attackSpeed);
         result.setAttackDistribution(attackDistribution);
+        result.setScalarMaxHit(directMaxHit + dotMaxHit);
+        result.setDirectMaxHit(directMaxHit);
+        result.setDotMaxHit(dotMaxHit);
+        result.setExpectedDirectDamage(expectedDirectDamage);
+        result.setExpectedDotDamage(expectedDotDamage);
+        result.setExpectedAttackSpeed(expectedAttackSpeed);
+        result.setDistributionDamagePerTick(damagePerTick);
         result.setDps(dps);
         
         return result;
@@ -119,7 +126,7 @@ public class DpsCalculator extends BaseCalc {
     }
 
     public int getMaxAttackRoll() {
-        if (isAmmoInvalid()) {
+        if (!isManualCast() && isAmmoInvalid()) {
             return 0;
         }
         CombatStyle style = player.getCombatStyle();
@@ -205,6 +212,10 @@ public class DpsCalculator extends BaseCalc {
 
         if (player.isWearingAny("Blisterwood flail", "Blisterwood sickle") && isVampyre()) {
             attackRoll = applyFactor(attackRoll, 21, 20);
+        }
+
+        if (player.isWearingAny("Hallowed flail", "Sunspear") && isVampyre()) {
+            attackRoll = applyFactor(attackRoll, 125, 100);
         }
         
         if (isWearingSilverWeapon() && player.isWearing("Efaritay's aid") && isVampyre()) {
@@ -460,6 +471,10 @@ public class DpsCalculator extends BaseCalc {
         if (defenceStyle.isMagic()) {
             return reducedStats.magicDefence;
         }
+        if (defenceStyle.isRanged() && "Salamander".equals(player.getWeaponCategory())) {
+            return (monster.getLightRangedDefence() + monster.getStandardRangedDefence()
+                + monster.getHeavyRangedDefence()) / 3;
+        }
         return monster.getDefenceForStyle(defenceStyle.getKey());
     }
 
@@ -615,16 +630,18 @@ public class DpsCalculator extends BaseCalc {
 
     private AttackType getRangedDefenceType() {
         String category = player.getWeaponCategory();
-        if ("Thrown".equals(category)) {
-            return AttackType.RANGED_LIGHT;
+        switch (category == null ? "" : category) {
+            case "Thrown":
+                return AttackType.RANGED_LIGHT;
+            case "Bow":
+            case "Salamander":
+                return AttackType.RANGED_STANDARD;
+            case "Crossbow":
+            case "Chinchompas":
+                return AttackType.RANGED_HEAVY;
+            default:
+                throw new IllegalStateException("Not a ranged weapon category: " + category);
         }
-        if ("Crossbow".equals(category) || "Chinchompa".equals(category)) {
-            return AttackType.RANGED_HEAVY;
-        }
-        if ("Salamander".equals(category)) {
-            return AttackType.RANGED_STANDARD;
-        }
-        return AttackType.RANGED_STANDARD;
     }
 
     public double calculateHitChance(int attackRoll, int defenceRoll) {
@@ -719,7 +736,7 @@ public class DpsCalculator extends BaseCalc {
     }
 
     private int getScalarMaxHit() {
-        if (isAmmoInvalid()) {
+        if (!isManualCast() && isAmmoInvalid()) {
             return 0;
         }
         CombatStyle style = player.getCombatStyle();
@@ -1361,21 +1378,156 @@ public class DpsCalculator extends BaseCalc {
             hitChance, getMinimumHit(scalarMaxHit), scalarMaxHit));
     }
 
+    private AttackDistribution getAttackDistribution(double hitChance, int scalarMaxHit) {
+        if (scalarMaxHit <= 0) return getBaseAttackDistribution(hitChance, scalarMaxHit);
+        int minHit = getMinimumHit(scalarMaxHit);
+        if (isSunspearSpec()) {
+            int damage = transformAccurateDamage(scalarMaxHit * 7 / 10);
+            return AttackDistribution.single(HitDistribution.single(
+                hitChance, Collections.singletonList(Hitsplat.accurate(damage))));
+        }
+        HitDistribution standard = getTransformedHitDistribution(hitChance, minHit, scalarMaxHit);
+        if (isWearingVeracs()) {
+            List<WeightedHit> outcomes = new ArrayList<>();
+            outcomes.addAll(standard.scaleProbability(0.75).getOutcomes());
+            outcomes.addAll(getTransformedHitDistribution(1.0, 1, scalarMaxHit + 1)
+                .scaleProbability(0.25).getOutcomes());
+            return AttackDistribution.single(new HitDistribution(outcomes).flatten());
+        }
+        if (isWearingScythe() && monster.getSize() >= 2) {
+            List<HitDistribution> splats = new ArrayList<>();
+            splats.add(standard);
+            splats.add(getTransformedHitDistribution(hitChance,
+                minHit, Math.max(minHit, scalarMaxHit / 2)));
+            if (monster.getSize() >= 3) {
+                splats.add(getTransformedHitDistribution(hitChance,
+                    minHit, Math.max(minHit, scalarMaxHit / 4)));
+            }
+            return new AttackDistribution(splats);
+        }
+        if (isUsingMeleeStyle() && isWearingKeris() && hasAttribute(MonsterAttribute.KALPHITE)) {
+            HitDistribution raw = HitDistribution.linear(hitChance, minHit, scalarMaxHit);
+            List<WeightedHit> outcomes = new ArrayList<>();
+            outcomes.addAll(raw.scaleProbability(50.0 / 51.0).getOutcomes());
+            outcomes.addAll(raw.scaleProbability(1.0 / 51.0).scaleDamage(3, 1).getOutcomes());
+            return AttackDistribution.single(finishDistribution(new HitDistribution(outcomes)));
+        }
+        int hitCount = getSimpleSpecHitCount();
+        if (hitCount > 1) {
+            List<HitDistribution> splats = new ArrayList<>();
+            for (int index = 0; index < hitCount; index++) splats.add(standard);
+            return new AttackDistribution(splats);
+        }
+        if (isAbyssalDaggerSpec()) {
+            HitDistribution second = getTransformedHitDistribution(1.0, minHit, scalarMaxHit);
+            HitDistribution dagger = standard.transform(hitsplat ->
+                HitDistribution.deterministic(hitsplat).zip(second), false);
+            return AttackDistribution.single(dagger);
+        }
+        if (isNonRubyBoltEffectApplicable()) {
+            return AttackDistribution.single(getNonRubyBoltDistribution(hitChance, minHit, scalarMaxHit));
+        }
+        if (isRubyBoltEffectApplicable()) {
+            return AttackDistribution.single(getRubyBoltDistribution(standard));
+        }
+        return AttackDistribution.single(standard);
+    }
+
+    private HitDistribution getNonRubyBoltDistribution(double hitChance, int minHit, int scalarMaxHit) {
+        HitDistribution preTarget = HitDistribution.linear(hitChance, minHit, scalarMaxHit)
+            .transform(hitsplat -> HitDistribution.deterministic(new Hitsplat(
+                applyAttackerDamageScaling(hitsplat.getDamage()), hitsplat.isAccurate())), false);
+        BoltEffect effect = getNonRubyBoltType();
+        double chance;
+        int effectDamage;
+        boolean accurateOnly;
+        switch (effect) {
+            case OPAL:
+                chance = 0.05 * kandarinBoltFactor();
+                effectDamage = opalBoltBonus();
+                accurateOnly = false;
+                break;
+            case PEARL:
+                chance = 0.06 * kandarinBoltFactor();
+                effectDamage = pearlBoltBonus();
+                accurateOnly = false;
+                break;
+            case DRAGONSTONE:
+                chance = 0.06 * kandarinBoltFactor();
+                effectDamage = dragonstoneBoltBonus();
+                accurateOnly = true;
+                break;
+            case DIAMOND:
+                return finishDistribution(effectReplacementDistribution(
+                    preTarget, 0.10 * kandarinBoltFactor(), diamondBoltEffectMax(), false));
+            case ONYX:
+                return finishDistribution(effectReplacementDistribution(
+                    preTarget, 0.11 * kandarinBoltFactor(), onyxBoltEffectMax(), true));
+            default:
+                return finishDistribution(preTarget);
+        }
+        HitDistribution effected = preTarget.transform(hitsplat -> {
+            if (!hitsplat.isAccurate() && accurateOnly) return HitDistribution.deterministic(hitsplat);
+            if (hitsplat.isAccurate() && isZaryteCrossbowSpec()) {
+                return HitDistribution.deterministic(Hitsplat.accurate(hitsplat.getDamage() + effectDamage));
+            }
+            return new HitDistribution(java.util.Arrays.asList(
+                new WeightedHit(chance, Collections.singletonList(
+                    new Hitsplat(hitsplat.getDamage() + effectDamage, hitsplat.isAccurate()))),
+                new WeightedHit(1.0 - chance, Collections.singletonList(hitsplat))));
+        });
+        return finishDistribution(effected);
+    }
+
+    private HitDistribution effectReplacementDistribution(
+        HitDistribution base, double chance, int effectMax, boolean accurateOnly) {
+        HitDistribution effect = HitDistribution.linear(1.0, 0, effectMax);
+        return base.transform(hitsplat -> {
+            if (!hitsplat.isAccurate() && accurateOnly) return HitDistribution.deterministic(hitsplat);
+            if (hitsplat.isAccurate() && isZaryteCrossbowSpec()) return effect;
+            List<WeightedHit> outcomes = new ArrayList<>(effect.scaleProbability(chance).getOutcomes());
+            outcomes.add(new WeightedHit(1.0 - chance, Collections.singletonList(hitsplat)));
+            return new HitDistribution(outcomes);
+        });
+    }
+
+    private HitDistribution getRubyBoltDistribution(HitDistribution base) {
+        double chance = 0.06 * kandarinBoltFactor();
+        HitDistribution effect = HitDistribution.deterministic(Hitsplat.accurate(rubyBoltDamage()));
+        return base.transform(hitsplat -> {
+            if (hitsplat.isAccurate() && isZaryteCrossbowSpec()) return effect;
+            List<WeightedHit> outcomes = new ArrayList<>(effect.scaleProbability(chance).getOutcomes());
+            outcomes.add(new WeightedHit(1.0 - chance, Collections.singletonList(hitsplat)));
+            return new HitDistribution(outcomes);
+        });
+    }
+
+    private HitDistribution finishDistribution(HitDistribution distribution) {
+        return distribution.transform(hitsplat -> HitDistribution.deterministic(new Hitsplat(
+            hitsplat.isAccurate()
+                ? finishAccurateDamage(hitsplat.getDamage())
+                : finishInaccurateDamage(hitsplat.getDamage()),
+            hitsplat.isAccurate())));
+    }
+
+    private int getDotMaxHit() {
+        if (!usingSpecialAttack) return 0;
+        if (player.isWearing("Scorching bow")) return hasAttribute(MonsterAttribute.DEMON) ? 5 : 1;
+        if (player.isWearing("Arkan blade")) return 10;
+        return 0;
+    }
+
+    private double getExpectedDotDamage(double hitChance) {
+        if (!usingSpecialAttack) return 0;
+        if (player.isWearing("Scorching bow")) return hasAttribute(MonsterAttribute.DEMON) ? 5 : 1;
+        if (player.isWearing("Arkan blade")) return 10 * hitChance;
+        return 0;
+    }
+
     private HitDistribution getTransformedHitDistribution(double hitChance, int minHit, int maxHit) {
         return HitDistribution.linear(hitChance, minHit, maxHit).transform(hitsplat ->
             HitDistribution.deterministic(new Hitsplat(
                 transformAccurateDamage(hitsplat.getDamage()), hitsplat.isAccurate())), false);
-    }
-
-    private boolean canUseBaseAttackDistribution() {
-        return !isSunspearSpec()
-            && !isWearingVeracs()
-            && !(isWearingScythe() && monster.getSize() >= 2)
-            && !(isUsingMeleeStyle() && isWearingKeris() && hasAttribute(MonsterAttribute.KALPHITE))
-            && !isNonRubyBoltEffectApplicable()
-            && !isRubyBoltEffectApplicable()
-            && getSimpleSpecHitCount() == 1
-            && !isAbyssalDaggerSpec();
     }
 
     private int transformAccurateDamage(int damage) {
@@ -1463,8 +1615,11 @@ public class DpsCalculator extends BaseCalc {
     }
 
     private int applyVampyreDamageScaling(int damage) {
-        if (player.isWearing("Blisterwood flail")) {
+        if (player.isWearingAny("Blisterwood flail", "Hallowed flail", "Blisterwood stake")) {
             return applyFactor(applyEfaritayDamageScaling(damage), 5, 4);
+        }
+        if (player.isWearing("Sunspear") && !usingSpecialAttack) {
+            return applyFactor(applyEfaritayDamageScaling(damage), 3, 2);
         }
         if (player.isWearing("Blisterwood sickle")) {
             return applyFactor(applyEfaritayDamageScaling(damage), 23, 20);
@@ -1482,8 +1637,11 @@ public class DpsCalculator extends BaseCalc {
     }
 
     private double applyVampyreDamageScaling(double damage) {
-        if (player.isWearing("Blisterwood flail")) {
+        if (player.isWearingAny("Blisterwood flail", "Hallowed flail", "Blisterwood stake")) {
             return applyEfaritayDamageScaling(damage) * 5.0 / 4.0;
+        }
+        if (player.isWearing("Sunspear") && !usingSpecialAttack) {
+            return applyEfaritayDamageScaling(damage) * 3.0 / 2.0;
         }
         if (player.isWearing("Blisterwood sickle")) {
             return applyEfaritayDamageScaling(damage) * 23.0 / 20.0;
@@ -1682,9 +1840,6 @@ public class DpsCalculator extends BaseCalc {
             return false;
         }
         String category = player.getWeaponCategory();
-        if (category == null || category.isEmpty()) {
-            category = inferWeaponCategory();
-        }
         return "Crossbow".equals(category);
     }
 
@@ -1883,47 +2038,11 @@ public class DpsCalculator extends BaseCalc {
     }
 
     private boolean isAmmoInvalid() {
-        AttackType type = player.getCombatStyle().getAttackType();
-        if (!type.isRanged()) {
-            return false;
-        }
-        String category = player.getWeaponCategory();
-        if (category == null || category.isEmpty()) {
-            category = inferWeaponCategory();
-        }
-        int ammoId = player.getAmmoId();
-        String ammoName = player.getAmmoName();
-        if (contains(NO_AMMO_RANGED_WEAPON_IDS, player.getWeaponId()) || "Blowpipe".equals(category)) {
-            return false;
-        }
-        if ("Bow".equals(category)) {
-            return ammoName == null || !ammoName.contains("arrow");
-        }
-        if ("Crossbow".equals(category)) {
-            return ammoName == null || !ammoName.contains("bolt");
-        }
-        if ("Ballista".equals(category)) {
-            return ammoName == null || !ammoName.contains("javelin");
-        }
-        if ("Salamander".equals(category)) {
-            return ammoName == null || !ammoName.contains("tar");
-        }
-        return ammoId <= 0 && requiresAmmoById(player.getWeaponId());
+        return player.getAmmoApplicability() == AmmoApplicability.INVALID;
     }
 
-    private String inferWeaponCategory() {
-        if (contains(CROSSBOW_WEAPON_IDS, player.getWeaponId()) || player.isWearingItemContaining("crossbow")) {
-            return "Crossbow";
-        }
-        String weapon = player.getWeaponName();
-        if (weapon != null && weapon.toLowerCase().contains("bow")) {
-            return "Bow";
-        }
-        return "";
-    }
-
-    private boolean requiresAmmoById(int weaponId) {
-        return contains(CROSSBOW_WEAPON_IDS, weaponId) || player.getWeaponName() != null && player.getWeaponName().toLowerCase().contains("bow");
+    private boolean isManualCast() {
+        return "Manual Cast".equals(player.getCombatStyle().getStance());
     }
 
     private boolean contains(int[] values, int needle) {

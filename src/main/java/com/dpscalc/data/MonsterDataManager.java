@@ -23,20 +23,18 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 
 @Singleton
 public class MonsterDataManager {
     private static final Logger log = LoggerFactory.getLogger(MonsterDataManager.class);
     
-    private static final String GITHUB_RAW_URL = 
-        "https://raw.githubusercontent.com/weirdgloop/osrs-dps-calc/main/cdn/json/monsters.json";
     private static final String CACHE_FILENAME = "dpscalc-monsters.json";
     private static final String ETAG_FILENAME = "dpscalc-monsters.etag";
     
-    private final Map<Integer, MonsterStats> monstersById = new ConcurrentHashMap<>();
+    private volatile MonsterCatalog catalog = MonsterCatalog.empty();
     private final Gson gson = new Gson();
     
     @Getter
@@ -72,7 +70,7 @@ public class MonsterDataManager {
             JsonArray monsters = gson.fromJson(new InputStreamReader(is, StandardCharsets.UTF_8), JsonArray.class);
             parseAndStoreMonsters(monsters);
             loaded = true;
-            log.info("Loaded {} monsters from bundled resource", monstersById.size());
+            log.info("Loaded {} monster IDs from bundled resource", catalog.uniqueIdCount());
         } catch (Exception e) {
             log.error("Failed to load bundled monsters.json", e);
         }
@@ -88,10 +86,15 @@ public class MonsterDataManager {
         }
         
         try (FileReader reader = new FileReader(cacheFile, StandardCharsets.UTF_8)) {
-            JsonArray monsters = gson.fromJson(reader, JsonArray.class);
+            String content = java.nio.file.Files.readString(cacheFile.toPath());
+            if (!MonsterDataProvenance.matches(content)) {
+                log.warn("Ignoring monster cache without pinned-reference provenance");
+                return;
+            }
+            JsonArray monsters = gson.fromJson(content, JsonArray.class);
             parseAndStoreMonsters(monsters);
             loaded = true;
-            log.info("Loaded {} monsters from cache", monstersById.size());
+            log.info("Loaded {} monster IDs from pinned cache", catalog.uniqueIdCount());
             
             if (etagFile.exists()) {
                 currentEtag = java.nio.file.Files.readString(etagFile.toPath()).trim();
@@ -108,7 +111,7 @@ public class MonsterDataManager {
         }
         
         Request.Builder requestBuilder = new Request.Builder()
-            .url(GITHUB_RAW_URL)
+            .url(MonsterDataProvenance.RAW_URL)
             .header("User-Agent", "RuneLite-DpsCalc");
         
         if (currentEtag != null) {
@@ -141,9 +144,14 @@ public class MonsterDataManager {
                         log.warn("Empty response from GitHub");
                         return;
                     }
+                    if (!MonsterDataProvenance.matches(body)) {
+                        log.error("Rejected monster data that does not match pinned reference {}",
+                            MonsterDataProvenance.REFERENCE_SHA);
+                        return;
+                    }
                     
                     JsonArray monsters = gson.fromJson(body, JsonArray.class);
-                    int previousCount = monstersById.size();
+                    int previousCount = catalog.uniqueIdCount();
                     parseAndStoreMonsters(monsters);
                     
                     String newEtag = response.header("ETag");
@@ -152,7 +160,7 @@ public class MonsterDataManager {
                     loaded = true;
                     updatedFromRemote = true;
                     log.info("Updated monster data from GitHub: {} monsters (was {})", 
-                        monstersById.size(), previousCount);
+                        catalog.uniqueIdCount(), previousCount);
                 } catch (Exception e) {
                     log.error("Failed to process GitHub response", e);
                 }
@@ -185,18 +193,17 @@ public class MonsterDataManager {
     }
     
     private void parseAndStoreMonsters(JsonArray monsters) {
-        Map<Integer, MonsterStats> newMonsters = new HashMap<>();
+        List<MonsterStats> newMonsters = new ArrayList<>();
         
         for (JsonElement element : monsters) {
             JsonObject obj = element.getAsJsonObject();
             MonsterStats stats = parseMonster(obj);
             if (stats != null && stats.getId() > 0) {
-                newMonsters.put(stats.getId(), stats);
+                newMonsters.add(stats);
             }
         }
         
-        monstersById.clear();
-        monstersById.putAll(newMonsters);
+        catalog = MonsterCatalog.from(newMonsters);
     }
     
     private File getCacheFile() {
@@ -280,28 +287,42 @@ public class MonsterDataManager {
         if (!loaded) {
             loadMonsters();
         }
-        return monstersById.get(npcId);
+        return catalog.get(npcId, null);
+    }
+
+    public MonsterStats getMonster(int npcId, String version) {
+        if (!loaded) {
+            loadMonsters();
+        }
+        return catalog.get(npcId, version);
+    }
+
+    public List<MonsterStats> getMonsterVersions(int npcId) {
+        if (!loaded) {
+            loadMonsters();
+        }
+        return catalog.versions(npcId);
     }
 
     public boolean hasMonster(int npcId) {
         if (!loaded) {
             loadMonsters();
         }
-        return monstersById.containsKey(npcId);
+        return catalog.contains(npcId);
     }
 
     public int getMonsterCount() {
         if (!loaded) {
             loadMonsters();
         }
-        return monstersById.size();
+        return catalog.uniqueIdCount();
     }
     
-    public java.util.Collection<MonsterStats> getAllMonsters() {
+    public Collection<MonsterStats> getAllMonsters() {
         if (!loaded) {
             loadMonsters();
         }
-        return monstersById.values();
+        return catalog.all();
     }
     
     public void forceRefresh() {

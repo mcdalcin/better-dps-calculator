@@ -124,6 +124,15 @@ public class DpsCalcOverlay extends OverlayPanel {
             .rightColor(VALUE_NORMAL)
             .build());
 
+        MonsterStats monsterStats = plugin.getCurrentMonsterStats();
+        if (monsterStats != null && monsterStats.getVersion() != null && !monsterStats.getVersion().isEmpty()) {
+            panelComponent.getChildren().add(LineComponent.builder()
+                .left("Version:")
+                .right(monsterStats.getVersion())
+                .rightColor(MUTED_TEXT)
+                .build());
+        }
+
         if (config.showDebugInfo()) {
             panelComponent.getChildren().add(LineComponent.builder()
                 .left("NPC ID:")

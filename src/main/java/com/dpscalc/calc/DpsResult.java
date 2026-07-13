@@ -10,6 +10,13 @@ public class DpsResult {
     private int defenceRoll;
     private int attackSpeed;
     private AttackDistribution attackDistribution;
+    private int scalarMaxHit;
+    private int directMaxHit;
+    private int dotMaxHit;
+    private double expectedDirectDamage;
+    private double expectedDotDamage;
+    private double expectedAttackSpeed;
+    private double damagePerTick;
     
     // Monster info for TTK calculations
     private int monsterHp;
@@ -36,6 +43,41 @@ public class DpsResult {
     public void setAttackDistribution(AttackDistribution attackDistribution) {
         this.attackDistribution = attackDistribution;
     }
+
+    public int getScalarMaxHit() { return scalarMaxHit; }
+    public void setScalarMaxHit(int scalarMaxHit) { this.scalarMaxHit = scalarMaxHit; }
+
+    public int getDirectMaxHit() { return directMaxHit; }
+    public void setDirectMaxHit(int directMaxHit) { this.directMaxHit = directMaxHit; }
+
+    public int getDotMaxHit() { return dotMaxHit; }
+    public void setDotMaxHit(int dotMaxHit) { this.dotMaxHit = dotMaxHit; }
+
+    public int getTotalMaxHit() { return directMaxHit + dotMaxHit; }
+    public int getDistributionMaxHit() {
+        return attackDistribution == null ? directMaxHit : attackDistribution.getMax();
+    }
+
+    public double getExpectedDirectDamage() { return expectedDirectDamage; }
+    public void setExpectedDirectDamage(double expectedDirectDamage) {
+        this.expectedDirectDamage = expectedDirectDamage;
+    }
+
+    public double getExpectedDotDamage() { return expectedDotDamage; }
+    public void setExpectedDotDamage(double expectedDotDamage) {
+        this.expectedDotDamage = expectedDotDamage;
+    }
+
+    public double getExpectedDamage() { return expectedDirectDamage + expectedDotDamage; }
+
+    public int getBaseAttackSpeed() { return attackSpeed; }
+    public double getExpectedAttackSpeed() { return expectedAttackSpeed; }
+    public void setExpectedAttackSpeed(double expectedAttackSpeed) {
+        this.expectedAttackSpeed = expectedAttackSpeed;
+    }
+
+    public double getDistributionDamagePerTick() { return damagePerTick; }
+    public void setDistributionDamagePerTick(double damagePerTick) { this.damagePerTick = damagePerTick; }
 
     public int getMonsterHp() { return monsterHp; }
     public void setMonsterHp(int monsterHp) { this.monsterHp = monsterHp; }

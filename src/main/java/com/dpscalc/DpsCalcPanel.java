@@ -40,6 +40,9 @@ public class DpsCalcPanel extends PluginPanel {
     private final JLabel monsterNameLabel = new JLabel();
     private final JLabel monsterStatsLabel = new JLabel();
     private final JLabel monsterDefLabel = new JLabel();
+    private final JComboBox<String> versionBox = new JComboBox<>();
+    private int versionBoxNpcId = -1;
+    private boolean updatingVersionBox = false;
     
     private final JLabel dpsLabel = new JLabel();
     private final JTextArea diagnosticsText = new JTextArea();
@@ -189,6 +192,19 @@ public class DpsCalcPanel extends PluginPanel {
         monsterDefLabel.setText("Def: -/-/- (S/S/C)");
         panel.add(monsterDefLabel);
 
+        panel.add(Box.createVerticalStrut(4));
+
+        versionBox.setFont(FontManager.getRunescapeSmallFont());
+        versionBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+        versionBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+        versionBox.setVisible(false);
+        versionBox.addActionListener(event -> {
+            if (!updatingVersionBox && !manualMode && versionBox.getSelectedItem() != null) {
+                plugin.selectMonsterVersion(versionBoxNpcId, selectedVersionValue((String) versionBox.getSelectedItem()));
+            }
+        });
+        panel.add(versionBox);
+
         return panel;
     }
 
@@ -270,11 +286,15 @@ public class DpsCalcPanel extends PluginPanel {
     public void selectMonster(MonsterStats monster) {
         manualMode = true;
         selectedMonster = monster;
+        versionBox.setVisible(false);
+        versionBoxNpcId = -1;
         updateDisplay(monster);
     }
 
     private void updateLoop() {
         if (manualMode) {
+            versionBox.setVisible(false);
+            versionBoxNpcId = -1;
             if (selectedMonster != null) {
                 updateDisplay(selectedMonster);
             }
@@ -295,15 +315,53 @@ public class DpsCalcPanel extends PluginPanel {
         MonsterStats stats = plugin.getCurrentMonsterStats();
         if (stats == null) {
             stats = monsterDataManager.getMonster(target.getId());
+            MonsterStats versionedStats = monsterDataManager.getMonster(target.getId(), plugin.getSelectedVersion());
+            if (versionedStats != null) {
+                stats = versionedStats;
+            }
         }
         if (stats != null) {
             selectedMonster = stats;
+            updateVersionBox(target.getId(), stats);
             updateDisplay(stats);
         }
     }
 
+    private void updateVersionBox(int npcId, MonsterStats current) {
+        List<MonsterStats> versions = monsterDataManager.getMonsterVersions(npcId);
+        if (versions.size() <= 1) {
+            versionBox.setVisible(false);
+            versionBoxNpcId = npcId;
+            return;
+        }
+
+        updatingVersionBox = true;
+        if (npcId != versionBoxNpcId || versionBox.getItemCount() != versions.size()) {
+            versionBox.removeAllItems();
+            for (MonsterStats versionedMonster : versions) {
+                versionBox.addItem(versionDisplay(versionedMonster));
+            }
+            versionBoxNpcId = npcId;
+        }
+        versionBox.setSelectedItem(versionDisplay(current));
+        updatingVersionBox = false;
+        versionBox.setVisible(true);
+    }
+
+    private static String versionDisplay(MonsterStats monster) {
+        String version = monster.getVersion();
+        return version == null || version.isEmpty() ? "Default" : version;
+    }
+
+    private static String selectedVersionValue(String display) {
+        return "Default".equals(display) ? "" : display;
+    }
+
     public void updateDisplay(MonsterStats monster) {
         monsterNameLabel.setText(monster.getName());
+        if (monster.getVersion() != null && !monster.getVersion().isEmpty()) {
+            monsterNameLabel.setText(monsterDisplayName(monster));
+        }
         int cmb = calculateCombatLevel(monster);
         monsterStatsLabel.setText(String.format("HP: %d | Cmb: %d", monster.getHitpoints(), cmb));
         monsterDefLabel.setText(String.format("Def: %d/%d/%d (S/S/C)", 
@@ -332,6 +390,8 @@ public class DpsCalcPanel extends PluginPanel {
         monsterNameLabel.setText("None");
         monsterStatsLabel.setText("HP: - | Cmb: -");
         monsterDefLabel.setText("Def: -/-/- (S/S/C)");
+        versionBox.setVisible(false);
+        versionBoxNpcId = -1;
         dpsLabel.setText("-");
         updateDiagnostics(null, null, config.useBestOffensivePrayer(), config.assumeMaxBoosts());
         
@@ -386,6 +446,14 @@ public class DpsCalcPanel extends PluginPanel {
         
         int maxOffense = Math.max(melee, Math.max(range, magic));
         return base + maxOffense;
+    }
+
+    private static String monsterDisplayName(MonsterStats monster) {
+        String version = monster.getVersion();
+        if (version == null || version.isEmpty()) {
+            return monster.getName();
+        }
+        return monster.getName() + " (" + version + ")";
     }
 
     public MonsterStats getSelectedMonster() {

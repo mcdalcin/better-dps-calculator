@@ -214,10 +214,10 @@ public class DpsComparisonDialog extends JDialog {
 
         final String searchQuery = query;
         List<MonsterStats> matches = monsterDataManager.getAllMonsters().stream()
-                .filter(m -> scoreMatch(m.getName().toLowerCase(), searchQuery) > 0)
+                .filter(monster -> scoreMatch(searchText(monster), searchQuery) > 0)
                 .sorted((a, b) -> Double.compare(
-                    scoreMatch(b.getName().toLowerCase(), searchQuery),
-                    scoreMatch(a.getName().toLowerCase(), searchQuery)))
+                    scoreMatch(searchText(b), searchQuery),
+                    scoreMatch(searchText(a), searchQuery)))
                 .limit(50)
                 .collect(Collectors.toList());
 
@@ -529,7 +529,7 @@ public class DpsComparisonDialog extends JDialog {
 
             if (monster != null) {
                 try {
-                    PlayerState state = plugin.snapshotToPlayerState(snapshot);
+                    PlayerState state = plugin.snapshotToPlayerState(snapshot, monster);
                     if (state != null) {
                         DpsCalculator calculator = new DpsCalculator(state, monster);
                         DpsResult result = calculator.calculate();
@@ -602,8 +602,8 @@ public class DpsComparisonDialog extends JDialog {
             return;
         }
 
-        monsterNameLabel.setText("Vs: " + monster.getName());
-        topTargetLabel.setText("Target: " + monster.getName() + " (HP: " + monster.getHitpoints() + ")");
+        monsterNameLabel.setText("Vs: " + monsterDisplayName(monster));
+        topTargetLabel.setText("Target: " + monsterDisplayName(monster) + " (HP: " + monster.getHitpoints() + ")");
 
         DpsResult result = plugin.calculateDps(monster, 
             useBestPrayerCheckbox.isSelected(), 
@@ -643,6 +643,22 @@ public class DpsComparisonDialog extends JDialog {
         int mins = (int) (seconds / 60);
         int secs = (int) (seconds % 60);
         return String.format("%dm %ds", mins, secs);
+    }
+
+    private static String searchText(MonsterStats monster) {
+        String version = monster.getVersion();
+        if (version == null || version.isEmpty()) {
+            return monster.getName().toLowerCase();
+        }
+        return (monster.getName() + " " + version).toLowerCase();
+    }
+
+    private static String monsterDisplayName(MonsterStats monster) {
+        String version = monster.getVersion();
+        if (version == null || version.isEmpty()) {
+            return monster.getName();
+        }
+        return monster.getName() + " (" + version + ")";
     }
 
     private GearSnapshot captureCurrentGear() {
@@ -696,7 +712,7 @@ public class DpsComparisonDialog extends JDialog {
         }
 
         DpsComparison comparison = new DpsComparison(
-            selectedMonster.getName(),
+            monsterDisplayName(selectedMonster),
             weaponName,
             result.getDps(),
             result.getMaxHit(),
@@ -878,7 +894,9 @@ public class DpsComparisonDialog extends JDialog {
             super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
             if (value instanceof MonsterStats) {
                 MonsterStats m = (MonsterStats) value;
-                setText(m.getName() + " (ID: " + m.getId() + ")");
+                String version = (m.getVersion() != null && !m.getVersion().isEmpty())
+                    ? " [" + m.getVersion() + "]" : "";
+                setText(m.getName() + version + " (ID: " + m.getId() + ")");
                 setBorder(new EmptyBorder(5, 8, 5, 8));
                 if (isSelected) {
                     setBackground(BRAND_ORANGE);

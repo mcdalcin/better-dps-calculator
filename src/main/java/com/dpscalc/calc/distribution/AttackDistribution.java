@@ -10,10 +10,15 @@ public final class AttackDistribution {
     private final List<HitDistribution> distributions;
 
     public AttackDistribution(List<HitDistribution> distributions) {
-        if (distributions == null || distributions.isEmpty() || distributions.contains(null)) {
+        if (distributions == null || distributions.isEmpty() || hasNull(distributions)) {
             throw new IllegalArgumentException("distributions must be non-empty and contain no nulls");
         }
         this.distributions = Collections.unmodifiableList(new ArrayList<>(distributions));
+    }
+
+    private static boolean hasNull(List<HitDistribution> distributions) {
+        for (HitDistribution distribution : distributions) if (distribution == null) return true;
+        return false;
     }
 
     public static AttackDistribution single(HitDistribution distribution) {

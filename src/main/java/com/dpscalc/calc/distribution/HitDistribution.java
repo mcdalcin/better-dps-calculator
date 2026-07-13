@@ -12,12 +12,17 @@ public final class HitDistribution {
     private final List<WeightedHit> outcomes;
 
     public HitDistribution(List<WeightedHit> outcomes) {
-        if (outcomes == null || outcomes.isEmpty() || outcomes.contains(null)) {
+        if (outcomes == null || outcomes.isEmpty() || hasNull(outcomes)) {
             throw new IllegalArgumentException("outcomes must be non-empty and contain no nulls");
         }
         List<WeightedHit> canonical = new ArrayList<>(outcomes);
         Collections.sort(canonical);
         this.outcomes = Collections.unmodifiableList(canonical);
+    }
+
+    private static boolean hasNull(List<WeightedHit> outcomes) {
+        for (WeightedHit outcome : outcomes) if (outcome == null) return true;
+        return false;
     }
 
     public static HitDistribution deterministic(Hitsplat hitsplat) {

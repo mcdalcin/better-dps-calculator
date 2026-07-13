@@ -1,5 +1,8 @@
 package com.dpscalc.state;
 
+import com.dpscalc.equipment.EquipmentLoadout;
+import com.dpscalc.equipment.AmmoApplicability;
+
 import java.util.EnumSet;
 import java.util.Set;
 
@@ -26,6 +29,8 @@ public class PlayerState {
     private String[] equippedItemNames = new String[14];
     private String[] equippedItemVersions = new String[14];
     private String[] equippedItemCategories = new String[14];
+    private EquipmentLoadout rawEquipmentLoadout;
+    private AmmoApplicability ammoApplicability = AmmoApplicability.ALLOWED;
     
     private CombatStyle combatStyle;
     
@@ -99,6 +104,11 @@ public class PlayerState {
 
     public String[] getEquippedItemCategories() { return equippedItemCategories; }
     public void setEquippedItemCategories(String[] equippedItemCategories) { this.equippedItemCategories = equippedItemCategories; }
+
+    public EquipmentLoadout getRawEquipmentLoadout() { return rawEquipmentLoadout; }
+    public void setRawEquipmentLoadout(EquipmentLoadout rawEquipmentLoadout) { this.rawEquipmentLoadout = rawEquipmentLoadout; }
+    public AmmoApplicability getAmmoApplicability() { return ammoApplicability; }
+    public void setAmmoApplicability(AmmoApplicability ammoApplicability) { this.ammoApplicability = ammoApplicability; }
     
     public int getWeaponId() { return equippedItemIds[EquipmentSlot.WEAPON.getIndex()]; }
     public String getWeaponName() { return equippedItemNames[EquipmentSlot.WEAPON.getIndex()]; }

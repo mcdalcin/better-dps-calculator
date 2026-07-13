@@ -58,10 +58,12 @@ public final class FixtureDocumentLoader {
                 fixture.get("category").getAsString(),
                 fixture.get("source").getAsString(),
                 new FixtureInputs(buildPlayer(inputs.getAsJsonObject("player")), buildMonster(inputs.getAsJsonObject("monster")), options.get("usingSpecialAttack").getAsBoolean()),
-                scalarOutputs(fixture.getAsJsonObject("outputs"))
+                FixtureOutputParser.parse(fixture.getAsJsonObject("outputs")),
+                fixture
             ));
         }
-        return new FixtureDocument(root.get("schemaVersion").getAsInt(), root.get("webCalcCommit").getAsString(), root.get("equipmentDomainDigest").getAsString(), fixtures);
+        return new FixtureDocument(root.get("schemaVersion").getAsInt(), root.get("webCalcCommit").getAsString(),
+            root.get("equipmentDomainDigest").getAsString(), root.get("totalScenarios").getAsInt(), fixtures);
     }
 
     private static RawPlayer buildPlayer(JsonObject player) {
@@ -128,16 +130,6 @@ public final class FixtureDocumentLoader {
     private static Map<String, Double> doubleMap(JsonObject object) {
         Map<String, Double> values = new LinkedHashMap<>();
         for (Map.Entry<String, JsonElement> entry : object.entrySet()) values.put(entry.getKey(), entry.getValue().getAsDouble());
-        return values;
-    }
-
-    private static Map<String, Double> scalarOutputs(JsonObject object) {
-        Map<String, Double> values = new LinkedHashMap<>();
-        for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
-            if (entry.getValue().isJsonPrimitive() && entry.getValue().getAsJsonPrimitive().isNumber()) {
-                values.put(entry.getKey(), entry.getValue().getAsDouble());
-            }
-        }
         return values;
     }
 

@@ -1,64 +1,54 @@
 package com.dpscalc;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
+import com.dpscalc.equipment.EquipmentPreparationFacade;
+import com.dpscalc.fixture.FixtureDocument;
+import com.dpscalc.fixture.FixtureDocument.FixtureCase;
+import com.dpscalc.fixture.FixtureDocumentException;
+import com.dpscalc.fixture.FixtureDocumentLoader;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 
 @RunWith(Parameterized.class)
 public class FixtureReplayTest {
+    private final FixtureCase fixture;
 
-    private final String fixtureId;
-    private final String fixtureName;
-    private final JsonObject fixture;
-
-    public FixtureReplayTest(String id, String name, JsonObject fixture) {
-        this.fixtureId = id;
-        this.fixtureName = name;
+    public FixtureReplayTest(String id, String name, FixtureCase fixture) {
         this.fixture = fixture;
     }
 
     @Parameterized.Parameters(name = "{0}: {1}")
     public static Collection<Object[]> loadFixtures() {
-        List<Object[]> testCases = new ArrayList<>();
+        return loadFixtures(System.getProperty("fixtureReplay.resource", "/fixtures.json"));
+    }
 
-        try (InputStream is = FixtureReplayTest.class.getResourceAsStream("/fixtures.json")) {
-            if (is == null) {
-                System.err.println("Warning: fixtures.json not found. Run generate-fixtures.ts first.");
-                return Collections.emptyList();
-            }
-
-            Gson gson = new Gson();
-            JsonObject root = gson.fromJson(new InputStreamReader(is, StandardCharsets.UTF_8), JsonObject.class);
-            JsonArray fixtures = root.getAsJsonArray("fixtures");
-
-            for (JsonElement elem : fixtures) {
-                JsonObject fixture = elem.getAsJsonObject();
-                String id = fixture.get("id").getAsString();
-                String name = fixture.get("name").getAsString();
-                testCases.add(new Object[]{id, name, fixture});
-            }
-        } catch (Exception e) {
-            System.err.println("Error loading fixtures: " + e.getMessage());
+    static Collection<Object[]> loadFixtures(String resourcePath) {
+        FixtureDocument document = FixtureDocumentLoader.loadResource(
+            resourcePath,
+            EquipmentPreparationFacade.REFERENCE_SHA,
+            EquipmentPreparationFacade.DOMAIN_DIGEST);
+        if (document.getDeclaredCount() <= 0) {
+            throw new FixtureDocumentException("$.totalScenarios", "must be positive before parameterization");
+        }
+        if (document.getDeclaredCount() != document.getFixtures().size()) {
+            throw new FixtureDocumentException("$.totalScenarios", "declared count does not match parameters");
         }
 
-        return testCases;
+        List<Object[]> parameters = new ArrayList<>(document.getDeclaredCount());
+        for (FixtureCase fixture : document.getFixtures()) {
+            parameters.add(new Object[]{fixture.getId(), fixture.getName(), fixture});
+        }
+        return parameters;
     }
 
     @Test
     public void testFixture() {
-        FixtureReplayAssertions.assertFixture(fixture, String.format("[%s] %s", fixtureId, fixtureName));
+        FixtureReplayAssertions.assertFixture(
+            fixture,
+            String.format("[%s] %s", fixture.getId(), fixture.getName()));
     }
-
 }

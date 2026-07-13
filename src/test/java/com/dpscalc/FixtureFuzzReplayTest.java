@@ -1,13 +1,13 @@
 package com.dpscalc;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
+import com.dpscalc.equipment.EquipmentPreparationFacade;
+import com.dpscalc.fixture.FixtureDocument;
+import com.dpscalc.fixture.FixtureDocument.FixtureCase;
+import com.dpscalc.fixture.FixtureDocumentLoader;
 import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,13 +40,15 @@ public class FixtureFuzzReplayTest {
 
         try {
             runGenerator(seed, count, startIndex, surface, output);
-            JsonObject root = readJson(output);
-            assertEquals("Fuzzer generated unexpected surface", surface, root.getAsJsonObject("generator").get("surface").getAsString());
-            JsonArray fixtures = root.getAsJsonArray("fixtures");
-            assertEquals("Fuzzer generated unexpected fixture count", count, fixtures.size());
+            FixtureDocument document = FixtureDocumentLoader.loadString(
+                Files.readString(output, StandardCharsets.UTF_8),
+                EquipmentPreparationFacade.REFERENCE_SHA,
+                EquipmentPreparationFacade.DOMAIN_DIGEST);
+            assertEquals("Fuzzer generated unexpected fixture count", count, document.getDeclaredCount());
+            assertEquals("Fuzzer generated unexpected fixture count", count, document.getFixtures().size());
 
-            for (int offset = 0; offset < fixtures.size(); offset++) {
-                JsonObject fixture = fixtures.get(offset).getAsJsonObject();
+            for (int offset = 0; offset < document.getFixtures().size(); offset++) {
+                FixtureCase fixture = document.getFixtures().get(offset);
                 int globalIndex = startIndex == null ? offset : startIndex + offset;
                 String context = String.format(
                     "surface=%s seed=%d count=%d index=%d reproduce='%s'",
@@ -93,12 +95,6 @@ public class FixtureFuzzReplayTest {
         }
         if (process.exitValue() != 0) {
             fail(String.format("Fixture fuzz generator failed with exit %d: %s%n%s", process.exitValue(), String.join(" ", command), processOutput));
-        }
-    }
-
-    private static JsonObject readJson(Path output) throws IOException {
-        try (InputStreamReader reader = new InputStreamReader(Files.newInputStream(output), StandardCharsets.UTF_8)) {
-            return new Gson().fromJson(reader, JsonObject.class);
         }
     }
 

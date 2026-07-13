@@ -1,5 +1,7 @@
 package com.dpscalc.state;
 
+import com.dpscalc.equipment.EquipmentPreparationFacade;
+import com.dpscalc.equipment.EquipmentResult;
 import net.runelite.api.Client;
 import net.runelite.api.InventoryID;
 import net.runelite.api.Item;
@@ -17,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.EnumSet;
+import java.util.Arrays;
 import java.util.Set;
 
 @Singleton
@@ -30,6 +33,9 @@ public class PlayerStateManager {
 
     @Inject
     private ItemManager itemManager;
+
+    @Inject
+    private EquipmentPreparationFacade equipmentPreparation;
 
     public PlayerState getPlayerState() {
         PlayerState state = new PlayerState();
@@ -65,12 +71,14 @@ public class PlayerStateManager {
         EquipmentStats stats = new EquipmentStats();
         int[] itemIds = new int[14];
         String[] itemNames = new String[14];
+        Arrays.fill(itemIds, -1);
         
         ItemContainer equipment = client.getItemContainer(InventoryID.EQUIPMENT);
         if (equipment == null) {
             state.setEquipmentStats(stats);
             state.setEquippedItemIds(itemIds);
             state.setEquippedItemNames(itemNames);
+            state.setRawEquipmentLoadout(equipmentPreparation.loadoutFromIds(itemIds));
             return;
         }
 
@@ -123,6 +131,14 @@ public class PlayerStateManager {
         state.setEquipmentStats(stats);
         state.setEquippedItemIds(itemIds);
         state.setEquippedItemNames(itemNames);
+        state.setRawEquipmentLoadout(equipmentPreparation.loadoutFromIds(itemIds));
+    }
+
+    public EquipmentResult prepareEquipment(PlayerState state, int monsterId) {
+        com.dpscalc.equipment.EquipmentLoadout loadout = state.getRawEquipmentLoadout();
+        if (loadout == null) loadout = equipmentPreparation.loadoutFromIds(state.getEquippedItemIds());
+        return equipmentPreparation.prepare(state, loadout, state.getEquippedItemNames(),
+            EquipmentPreparationFacade.context(state, monsterId));
     }
 
     private void readPrayers(PlayerState state) {
@@ -150,6 +166,12 @@ public class PlayerStateManager {
     private void readBuffs(PlayerState state) {
         int wildernessLevel = client.getVarbitValue(WILDERNESS_VARBIT);
         state.setInWilderness(wildernessLevel > 0);
+
+        // Soulreaper axe soul stacks (0-5). The reference models this as the
+        // player.buffs.soulreaperStacks input; DpsCalculator already grants the
+        // +6% per-stack strength/accuracy exactly like PlayerVsNPCCalc. The setter
+        // clamps to 0-5, so the raw varp value is safe to pass through.
+        state.setSoulreaperStacks(client.getVarpValue(net.runelite.api.gameval.VarPlayerID.SOULREAPER_STACKS));
     }
 
     private CombatStyle determineCombatStyle(int weaponType, int attackStyle, int castingMode) {
@@ -471,77 +493,4 @@ public class PlayerStateManager {
         }
     }
 
-    /**
-     * Calculates equipment stats from an array of item IDs.
-     * Used for reconstructing equipment stats from a GearSnapshot.
-     * 
-     * <p>Follows the same pattern as readEquipment() but works with item IDs
-     * instead of the live equipment container.
-     * 
-     * @param itemIds 14-element array of item IDs (-1 for empty slots)
-     * @return EquipmentStats with summed bonuses from all equipped items
-     */
-    public EquipmentStats calculateEquipmentStatsFromIds(int[] itemIds) {
-        EquipmentStats stats = new EquipmentStats();
-        
-        if (itemIds == null || itemIds.length != 14) {
-            return stats;
-        }
-        
-        for (int slot = 0; slot < 14; slot++) {
-            int itemId = itemIds[slot];
-            if (itemId == -1) {
-                continue;
-            }
-            
-            ItemStats itemStats = itemManager.getItemStats(itemId, false);
-            if (itemStats != null) {
-                ItemEquipmentStats eq = itemStats.getEquipment();
-                if (eq != null) {
-                    stats.addStabAttack(eq.getAstab());
-                    stats.addSlashAttack(eq.getAslash());
-                    stats.addCrushAttack(eq.getAcrush());
-                    stats.addMagicAttack(eq.getAmagic());
-                    stats.addRangedAttack(eq.getArange());
-                    
-                    stats.addMeleeStrength(eq.getStr());
-                    stats.addRangedStrength(eq.getRstr());
-                    stats.addMagicDamage(eq.getMdmg());
-                    
-                    stats.addStabDefence(eq.getDstab());
-                    stats.addSlashDefence(eq.getDslash());
-                    stats.addCrushDefence(eq.getDcrush());
-                    stats.addMagicDefence(eq.getDmagic());
-                    stats.addRangedDefence(eq.getDrange());
-                    
-                    stats.addPrayerBonus(eq.getPrayer());
-                }
-            }
-        }
-        
-        return stats;
-    }
-
-    /**
-     * Gets the weapon attack speed from an item ID.
-     * Used for reconstructing weapon speed from a GearSnapshot.
-     * 
-     * @param weaponItemId Weapon item ID (-1 for unarmed)
-     * @return Weapon attack speed (default 4 for unarmed or if stats unavailable)
-     */
-    public int getWeaponSpeed(int weaponItemId) {
-        if (weaponItemId == -1) {
-            return 4; // Unarmed default speed
-        }
-        
-        ItemStats itemStats = itemManager.getItemStats(weaponItemId, false);
-        if (itemStats != null) {
-            ItemEquipmentStats eq = itemStats.getEquipment();
-            if (eq != null) {
-                return eq.getAspeed();
-            }
-        }
-        
-        return 4; // Default speed if stats unavailable
-    }
 }

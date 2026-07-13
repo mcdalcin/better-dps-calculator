@@ -1513,7 +1513,7 @@ public class DpsCalculatorTest {
             DpsCalculator calc = new DpsCalculator(player, monster, true);
             DpsResult result = calc.calculate();
 
-            assertEquals("Sunspear spec should report the normal max before fixed spec damage", 31, result.getMaxHit());
+            assertEquals("Sunspear spec should report its fixed damage", 21, result.getMaxHit());
             assertEquals("Sunspear spec should use fixed 70% damage", 21.0 / (4 * 0.6), result.getDps(), 0.0001);
         }
 
@@ -2007,6 +2007,17 @@ public class DpsCalculatorTest {
             assertEquals(24, result.getAttackDistribution().getMax());
             assertEquals(11.79936492123778,
                 result.getAttackDistribution().getExpectedDamage(), 0.0);
+            assertEquals(24, result.getScalarMaxHit());
+            assertEquals(24, result.getDirectMaxHit());
+            assertEquals(0, result.getDotMaxHit());
+            assertEquals(24, result.getTotalMaxHit());
+            assertEquals(24, result.getDistributionMaxHit());
+            assertEquals(11.79936492123778, result.getExpectedDirectDamage(), 0.0);
+            assertEquals(0.0, result.getExpectedDotDamage(), 0.0);
+            assertEquals(11.79936492123778, result.getExpectedDamage(), 0.0);
+            assertEquals(4, result.getBaseAttackSpeed());
+            assertEquals(4.0, result.getExpectedAttackSpeed(), 0.0);
+            assertEquals(2.949841230309445, result.getDistributionDamagePerTick(), 0.0);
         }
     }
 }

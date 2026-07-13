@@ -1,30 +1,23 @@
 package com.dpscalc;
 
-import com.dpscalc.equipment.EquipmentCalculator;
-import com.dpscalc.equipment.EquipmentCatalogItem;
 import com.dpscalc.equipment.EquipmentCombatStyle;
 import com.dpscalc.equipment.EquipmentContext;
-import com.dpscalc.equipment.EquipmentDomainCatalog;
 import com.dpscalc.equipment.EquipmentDomainException;
 import com.dpscalc.equipment.EquipmentItem;
 import com.dpscalc.equipment.EquipmentLoadout;
-import com.dpscalc.equipment.EquipmentResult;
-import com.dpscalc.equipment.EquipmentStatTotals;
+import com.dpscalc.equipment.EquipmentPreparationFacade;
 import com.dpscalc.equipment.ItemVariable;
 import com.dpscalc.state.EquipmentStats;
 import com.dpscalc.state.PlayerState;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.EnumMap;
 import java.util.Map;
 
 final class FixtureEquipmentAdapter {
     private static final int SLOT_COUNT = 14;
-    private static final EquipmentDomainCatalog CATALOG = loadCatalog();
-    private static final EquipmentCalculator CALCULATOR = new EquipmentCalculator(CATALOG);
+    private static final EquipmentPreparationFacade PREPARATION = new EquipmentPreparationFacade();
 
     private FixtureEquipmentAdapter() {}
 
@@ -41,12 +34,7 @@ final class FixtureEquipmentAdapter {
             EquipmentCombatStyle.of(style.get("type").getAsString(), style.get("stance").getAsString()),
             spellbook(playerJson.get("spell"))
         );
-        EquipmentResult result = CALCULATOR.calculate(loadout, context);
-        state.setEquipmentStats(toMutableStats(result.getStats()));
-        applyIdentity(state, result.getCanonicalLoadout());
-        int speed = result.getAttackSpeed();
-        if ("Rapid".equals(style.get("stance").getAsString())) speed += 1;
-        state.setWeaponSpeed(speed);
+        PREPARATION.prepare(state, loadout, null, context);
     }
 
     private static EquipmentLoadout rawLoadout(JsonObject equipment) {
@@ -71,54 +59,6 @@ final class FixtureEquipmentAdapter {
             else throw new EquipmentDomainException("itemVars." + entry.getKey(), "unsupported primitive");
         }
         return values;
-    }
-
-    private static void applyIdentity(PlayerState state, EquipmentLoadout loadout) {
-        int[] ids = new int[SLOT_COUNT];
-        String[] names = new String[SLOT_COUNT];
-        String[] versions = new String[SLOT_COUNT];
-        String[] categories = new String[SLOT_COUNT];
-        for (Map.Entry<com.dpscalc.equipment.EquipmentSlot, EquipmentItem> entry : loadout.asMap().entrySet()) {
-            com.dpscalc.state.EquipmentSlot stateSlot = stateSlot(entry.getKey());
-            EquipmentCatalogItem facts = CATALOG.getItem(entry.getValue());
-            ids[stateSlot.getIndex()] = entry.getValue().getOriginalId();
-            names[stateSlot.getIndex()] = facts.getName();
-            versions[stateSlot.getIndex()] = facts.getVersion();
-            categories[stateSlot.getIndex()] = facts.getCategory();
-        }
-        state.setEquippedItemIds(ids);
-        state.setEquippedItemNames(names);
-        state.setEquippedItemVersions(versions);
-        state.setEquippedItemCategories(categories);
-    }
-
-    private static com.dpscalc.state.EquipmentSlot stateSlot(com.dpscalc.equipment.EquipmentSlot slot) {
-        switch (slot) {
-            case HEAD: return com.dpscalc.state.EquipmentSlot.HEAD;
-            case CAPE: return com.dpscalc.state.EquipmentSlot.CAPE;
-            case NECK: return com.dpscalc.state.EquipmentSlot.AMULET;
-            case WEAPON: return com.dpscalc.state.EquipmentSlot.WEAPON;
-            case BODY: return com.dpscalc.state.EquipmentSlot.BODY;
-            case SHIELD: return com.dpscalc.state.EquipmentSlot.SHIELD;
-            case LEGS: return com.dpscalc.state.EquipmentSlot.LEGS;
-            case HANDS: return com.dpscalc.state.EquipmentSlot.GLOVES;
-            case FEET: return com.dpscalc.state.EquipmentSlot.BOOTS;
-            case RING: return com.dpscalc.state.EquipmentSlot.RING;
-            case AMMO: return com.dpscalc.state.EquipmentSlot.AMMO;
-            default: throw new AssertionError(slot);
-        }
-    }
-
-    private static EquipmentStats toMutableStats(EquipmentStatTotals totals) {
-        EquipmentStats stats = new EquipmentStats();
-        stats.setStabAttack(totals.getStabAttack()); stats.setSlashAttack(totals.getSlashAttack());
-        stats.setCrushAttack(totals.getCrushAttack()); stats.setMagicAttack(totals.getMagicAttack());
-        stats.setRangedAttack(totals.getRangedAttack()); stats.setMeleeStrength(totals.getMeleeStrength());
-        stats.setRangedStrength(totals.getRangedStrength()); stats.setMagicDamage(totals.getMagicDamage());
-        stats.setPrayerBonus(totals.getPrayerBonus()); stats.setStabDefence(totals.getStabDefence());
-        stats.setSlashDefence(totals.getSlashDefence()); stats.setCrushDefence(totals.getCrushDefence());
-        stats.setMagicDefence(totals.getMagicDefence()); stats.setRangedDefence(totals.getRangedDefence());
-        return stats;
     }
 
     private static String spellbook(JsonElement spell) {
@@ -185,11 +125,4 @@ final class FixtureEquipmentAdapter {
     private static int value(JsonObject json, String key) { JsonElement value = json.get(key); return value == null || value.isJsonNull() ? 0 : value.getAsInt(); }
     private static String nullableString(JsonElement value) { return value == null || value.isJsonNull() ? null : value.getAsString(); }
 
-    private static EquipmentDomainCatalog loadCatalog() {
-        try (InputStream stream = FixtureEquipmentAdapter.class.getResourceAsStream("/equipment-domain.json")) {
-            return EquipmentDomainCatalog.load(stream, "b6bc098dc0d742b2b763375d2e78e1b611a22070", "070a34ce7f6267be1ae8c84cfdd3757100f5a027898ba34937eaba16536ea951");
-        } catch (IOException error) {
-            throw new ExceptionInInitializerError(error);
-        }
-    }
 }

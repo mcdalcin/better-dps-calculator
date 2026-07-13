@@ -34,7 +34,7 @@ public final class EquipmentCalculator {
         applyEliteVoid(totals, canonical);
         applyDizana(totals, cape, applicability);
         int attackSpeed = EquipmentAttackSpeedCalculator.calculate(weapon, context);
-        return new EquipmentResult(canonical, new EquipmentStatTotals(totals), attackSpeed);
+        return new EquipmentResult(canonical, new EquipmentStatTotals(totals), attackSpeed, applicability);
     }
 
     private EquipmentStatTotals visibleTotals(EquipmentLoadout loadout, AmmoApplicability applicability) {

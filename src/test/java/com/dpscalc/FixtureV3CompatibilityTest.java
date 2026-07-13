@@ -28,7 +28,7 @@ public class FixtureV3CompatibilityTest {
         JsonObject equipment = first.getAsJsonObject("inputs").getAsJsonObject("player").getAsJsonObject("equipment");
 
         assertEquals(3, root.get("schemaVersion").getAsInt());
-        assertEquals(146, replayCases.size());
+        assertEquals(150, replayCases.size());
         assertFalse(equipment.has("stats"));
         assertFalse(equipment.has("weaponSpeed"));
         assertEquals(4151, equipment.getAsJsonObject("weapon").get("id").getAsInt());

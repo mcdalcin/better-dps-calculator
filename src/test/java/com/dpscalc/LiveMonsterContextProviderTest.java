@@ -182,6 +182,33 @@ public class LiveMonsterContextProviderTest {
         assertEquals(8, enriched.getInputs().getMonsterCurrentHp());
     }
 
+    @Test
+    public void enrichPreservesSelectedVersion_whenApplyingLiveContext() {
+        // Given
+        MonsterStats source = monster(MonsterConstants.ZEBAK_IDS[0], 500);
+        source.setVersion("Challenge Mode");
+        LiveMonsterContextProvider provider = new LiveMonsterContextProvider(
+            varbits(
+                LiveMonsterContextProvider.TOA_RAID_LEVEL_VARBIT, 300,
+                LiveMonsterContextProvider.TOA_PARTY_VARBITS[0], 1,
+                LiveMonsterContextProvider.TOA_CRONDIS_LEVEL_VARBIT, 2
+            ),
+            new LiveMonsterContextProvider.TargetHealth(50, 100)
+        );
+
+        // When
+        MonsterStats enriched = provider.enrich(source);
+
+        // Then
+        assertEquals("Challenge Mode", enriched.getVersion());
+        assertEquals(300, enriched.getInputs().getToaInvocationLevel());
+        assertEquals(2, enriched.getInputs().getToaPathLevel());
+        assertEquals(1, enriched.getInputs().getPartySize());
+        assertEquals(620, enriched.getInputs().getMonsterCurrentHp());
+        assertEquals(0, source.getInputs().getToaInvocationLevel());
+        assertEquals(0, source.getInputs().getMonsterCurrentHp());
+    }
+
     private static MonsterStats monster(int id, int hitpoints) {
         MonsterStats stats = new MonsterStats();
         stats.setId(id);

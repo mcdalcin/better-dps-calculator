@@ -13,11 +13,16 @@ public final class WeightedHit implements Comparable<WeightedHit> {
         if (!Double.isFinite(probability) || probability < 0) {
             throw new IllegalArgumentException("probability must be finite and non-negative");
         }
-        if (hitsplats == null || hitsplats.isEmpty() || hitsplats.contains(null)) {
+        if (hitsplats == null || hitsplats.isEmpty() || hasNull(hitsplats)) {
             throw new IllegalArgumentException("hitsplats must be non-empty and contain no nulls");
         }
         this.probability = probability;
         this.hitsplats = Collections.unmodifiableList(new ArrayList<>(hitsplats));
+    }
+
+    private static boolean hasNull(List<Hitsplat> hitsplats) {
+        for (Hitsplat hitsplat : hitsplats) if (hitsplat == null) return true;
+        return false;
     }
 
     public double getProbability() {

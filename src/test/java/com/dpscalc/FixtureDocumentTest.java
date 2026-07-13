@@ -24,9 +24,10 @@ public class FixtureDocumentTest {
 
     @Test
     public void loadsValidRawDocumentAsImmutableDtos() {
-        FixtureDocument document = FixtureDocumentLoader.loadResource("/fixtures-v3.json", TARGET_SHA, RULE_DIGEST);
+        FixtureDocument document = FixtureDocumentLoader.loadResource("/fixtures.json", TARGET_SHA, RULE_DIGEST);
 
-        assertEquals(146, document.getFixtures().size());
+        assertEquals(150, document.getDeclaredCount());
+        assertEquals(150, document.getFixtures().size());
         assertEquals(4151, document.getFixtures().get(0).getInputs().getPlayer().getEquipment().get("weapon").getId());
         assertEquals("Catacombs of Kourend", document.getFixtures().get(0).getInputs().getMonster().getVersion());
         assertThrows(UnsupportedOperationException.class, () -> document.getFixtures().clear());
@@ -38,6 +39,15 @@ public class FixtureDocumentTest {
             () -> FixtureDocumentLoader.loadResource("/missing-fixtures-v3.json", TARGET_SHA, RULE_DIGEST));
 
         assertTrue(error.getMessage().contains("resource"));
+    }
+
+    @Test
+    public void missingResourceCannotProduceZeroTestSuccess() {
+        FixtureDocumentException error = assertThrows(FixtureDocumentException.class,
+            () -> FixtureReplayTest.loadFixtures("/missing-fixtures-v3.json"));
+
+        assertTrue(error.getMessage().contains("resource"));
+        assertTrue(error.getMessage().contains("missing-fixtures-v3.json"));
     }
 
     @Test
@@ -82,10 +92,17 @@ public class FixtureDocumentTest {
             fixtures.add(fixtures.get(0).deepCopy());
             root.addProperty("totalScenarios", fixtures.size());
             root.addProperty("successfulScenarios", fixtures.size());
-        }), "$.fixtures[146].id"));
+        }), "$.fixtures[150].id"));
         documents.add(new InvalidDocument("wrong digest", mutate(root -> root.addProperty("equipmentDomainDigest", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")), "$.equipmentDomainDigest"));
         documents.add(new InvalidDocument("wrong schema", mutate(root -> root.addProperty("schemaVersion", 2)), "$.schemaVersion"));
         documents.add(new InvalidDocument("count mismatch", mutate(root -> root.addProperty("totalScenarios", 2)), "$.totalScenarios"));
+        documents.add(new InvalidDocument("successful count mismatch", mutate(root -> root.addProperty("successfulScenarios", 2)), "$.totalScenarios"));
+        documents.add(new InvalidDocument("failed count mismatch", mutate(root -> root.addProperty("failedScenarios", 1)), "$.totalScenarios"));
+        documents.add(new InvalidDocument("fractional discrete output", mutate(root -> root.getAsJsonArray("fixtures").get(0).getAsJsonObject().getAsJsonObject("outputs").addProperty("maxAttackRoll", 1.5)), "$.fixtures[0].outputs.maxAttackRoll"));
+        documents.add(new InvalidDocument("zero-total distribution", mutate(root -> {
+            JsonArray distribution = root.getAsJsonArray("fixtures").get(0).getAsJsonObject().getAsJsonObject("outputs").getAsJsonArray("normalizedDistribution");
+            for (int index = 0; index < distribution.size(); index++) distribution.get(index).getAsJsonObject().addProperty("probability", 0);
+        }), "$.fixtures[0].outputs.normalizedDistribution"));
         documents.add(new InvalidDocument("non-finite output", validJson().replaceFirst("\"dps\"\\s*:\\s*[^,}]+", "\"dps\": 1e400"), "$.fixtures[0].outputs.dps"));
         documents.add(new InvalidDocument("positive integer overflow", mutate(root -> root.getAsJsonArray("fixtures").get(0).getAsJsonObject().getAsJsonObject("inputs").getAsJsonObject("monster").addProperty("id", 2147483648L)), "$.fixtures[0].inputs.monster.id"));
         documents.add(new InvalidDocument("negative integer overflow", mutate(root -> root.getAsJsonArray("fixtures").get(0).getAsJsonObject().getAsJsonObject("inputs").getAsJsonObject("monster").addProperty("id", -2147483649L)), "$.fixtures[0].inputs.monster.id"));
@@ -100,9 +117,9 @@ public class FixtureDocumentTest {
     }
 
     private static String validJson() {
-        try (InputStream stream = FixtureDocumentTest.class.getResourceAsStream("/fixtures-v3.json")) {
+        try (InputStream stream = FixtureDocumentTest.class.getResourceAsStream("/fixtures.json")) {
             if (stream == null) {
-                throw new AssertionError("fixtures-v3.json missing");
+                throw new AssertionError("fixtures.json missing");
             }
             return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException error) {

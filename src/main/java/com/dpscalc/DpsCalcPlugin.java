@@ -7,8 +7,6 @@ import com.dpscalc.data.MonsterDataManager;
 import com.dpscalc.data.MonsterStats;
 import com.dpscalc.state.AttackType;
 import com.dpscalc.state.CombatStyle;
-import com.dpscalc.state.EquipmentSlot;
-import com.dpscalc.state.EquipmentStats;
 import com.dpscalc.state.GearSnapshot;
 import com.dpscalc.state.PlayerState;
 import com.dpscalc.state.PlayerStateManager;
@@ -106,6 +104,9 @@ public class DpsCalcPlugin extends Plugin {
     private MonsterStats currentMonsterStats;
 
     @Getter
+    private volatile String selectedVersion;
+
+    @Getter
     private volatile PlayerState cachedPlayerState;
 
     public ItemManager getItemManager() {
@@ -166,6 +167,7 @@ public class DpsCalcPlugin extends Plugin {
         currentDpsResult = null;
         specDpsResult = null;
         currentMonsterStats = null;
+        selectedVersion = null;
         combatTracker.reset();
     }
 
@@ -205,7 +207,11 @@ public class DpsCalcPlugin extends Plugin {
         calcState.setEquipmentStats(playerState.getEquipmentStats());
         calcState.setEquippedItemIds(playerState.getEquippedItemIds());
         calcState.setEquippedItemNames(playerState.getEquippedItemNames());
-        calcState.setWeaponSpeed(playerState.getWeaponSpeed());
+        calcState.setRawEquipmentLoadout(playerState.getRawEquipmentLoadout());
+        calcState.setSpellName(playerState.getSpellName());
+        calcState.setSpellbook(playerState.getSpellbook());
+        calcState.setSpellElement(playerState.getSpellElement());
+        calcState.setSpellMaxHit(playerState.getSpellMaxHit());
         calcState.setCurrentHitpoints(playerState.getCurrentHitpoints());
         
         calcState.setOnSlayerTask(config.onSlayerTask());
@@ -226,6 +232,8 @@ public class DpsCalcPlugin extends Plugin {
             applyMaxBoosts(calcState);
         }
 
+        playerStateManager.prepareEquipment(calcState, monster.getId());
+
         DpsCalculator calculator = new DpsCalculator(calcState, monster);
         DpsResult result = calculator.calculate();
         result.setMonsterHp(monster.getHitpoints());
@@ -241,6 +249,7 @@ public class DpsCalcPlugin extends Plugin {
             currentDpsResult = null;
             specDpsResult = null;
             currentMonsterStats = null;
+            selectedVersion = null;
         } else if (event.getGameState() == GameState.LOGGED_IN) {
             cachedPlayerState = playerStateManager.getPlayerState();
         }
@@ -260,7 +269,11 @@ public class DpsCalcPlugin extends Plugin {
         Actor target = event.getTarget();
         if (target instanceof NPC) {
             cancelTargetClearTask();
-            targetNpc = (NPC) target;
+            NPC newTarget = (NPC) target;
+            if (targetNpc == null || targetNpc.getId() != newTarget.getId()) {
+                selectedVersion = null;
+            }
+            targetNpc = newTarget;
             recalculateDps();
         } else if (target == null && targetNpc != null && !targetNpc.isDead()) {
             scheduleTargetClear();
@@ -287,6 +300,7 @@ public class DpsCalcPlugin extends Plugin {
         currentDpsResult = null;
         specDpsResult = null;
         currentMonsterStats = null;
+        selectedVersion = null;
     }
 
     @Subscribe
@@ -317,7 +331,7 @@ public class DpsCalcPlugin extends Plugin {
         }
 
         int npcId = targetNpc.getId();
-        MonsterStats baseMonsterStats = monsterDataManager.getMonster(npcId);
+        MonsterStats baseMonsterStats = monsterDataManager.getMonster(npcId, selectedVersion);
         
         if (baseMonsterStats == null) {
             log.debug("No monster data found for NPC ID: {}", npcId);
@@ -331,6 +345,7 @@ public class DpsCalcPlugin extends Plugin {
 
         playerState.setOnSlayerTask(config.onSlayerTask());
         playerState.setChargeSpellActive(config.chargeSpell());
+        playerStateManager.prepareEquipment(playerState, currentMonsterStats.getId());
 
         DpsCalculator calculator = new DpsCalculator(playerState, currentMonsterStats);
         currentDpsResult = calculator.calculate();
@@ -378,7 +393,29 @@ public class DpsCalcPlugin extends Plugin {
         combatTracker.reset();
     }
 
+    public boolean selectMonsterVersion(int npcId, String version) {
+        NPC target = targetNpc;
+        if (target == null || target.getId() != npcId) {
+            return false;
+        }
+        selectedVersion = version;
+        clientThread.invokeLater(this::recalculateDps);
+        return true;
+    }
+
+    public java.util.List<MonsterStats> getTargetVersions() {
+        NPC target = targetNpc;
+        if (target == null) {
+            return java.util.Collections.emptyList();
+        }
+        return monsterDataManager.getMonsterVersions(target.getId());
+    }
+
     public PlayerState snapshotToPlayerState(GearSnapshot snapshot) {
+        return snapshotToPlayerState(snapshot, null);
+    }
+
+    public PlayerState snapshotToPlayerState(GearSnapshot snapshot, MonsterStats monster) {
         if (cachedPlayerState == null || snapshot == null) {
             return null;
         }
@@ -387,12 +424,6 @@ public class DpsCalcPlugin extends Plugin {
 
         state.setEquippedItemIds(snapshot.getEquippedItemIds().clone());
         state.setEquippedItemNames(snapshot.getEquippedItemNames().clone());
-
-        EquipmentStats equipStats = playerStateManager.calculateEquipmentStatsFromIds(snapshot.getEquippedItemIds());
-        state.setEquipmentStats(equipStats);
-
-        int weaponId = snapshot.getEquippedItemIds()[EquipmentSlot.WEAPON.getIndex()];
-        state.setWeaponSpeed(playerStateManager.getWeaponSpeed(weaponId));
 
         Set<Prayer> prayers = EnumSet.copyOf(snapshot.getActivePrayers());
         
@@ -417,6 +448,10 @@ public class DpsCalcPlugin extends Plugin {
         state.setHitpointsLevel(cachedPlayerState.getHitpointsLevel());
         state.setPrayerLevel(cachedPlayerState.getPrayerLevel());
         state.setCurrentHitpoints(cachedPlayerState.getCurrentHitpoints());
+        state.setSpellName(cachedPlayerState.getSpellName());
+        state.setSpellbook(cachedPlayerState.getSpellbook());
+        state.setSpellElement(cachedPlayerState.getSpellElement());
+        state.setSpellMaxHit(cachedPlayerState.getSpellMaxHit());
 
         if (snapshot.isAssumeMaxBoosts()) {
             applyMaxBoosts(state, attackType);
@@ -431,6 +466,7 @@ public class DpsCalcPlugin extends Plugin {
         state.setOnSlayerTask(config.onSlayerTask());
         state.setChargeSpellActive(config.chargeSpell());
         state.setInWilderness(cachedPlayerState.isInWilderness());
+        playerStateManager.prepareEquipment(state, monster == null ? -1 : monster.getId());
 
         return state;
     }

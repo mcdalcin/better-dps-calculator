@@ -20,8 +20,9 @@ final class FixtureJsonValidator {
     private static final Set<String> MONSTER_FIELDS = Set.of("id", "version", "name", "size", "speed", "skills", "offensive", "defensive", "attributes", "weakness", "inputs");
     private static final Set<String> MONSTER_INPUT_FIELDS = Set.of("isFromCoxCm", "toaInvocationLevel", "toaPathLevel", "partyMaxCombatLevel", "partySumMiningLevel", "partyMaxHpLevel", "partySize", "monsterCurrentHp", "defenceReductions");
     private static final Set<String> REDUCTION_FIELDS = Set.of("vulnerability", "accursed", "elderMaul", "dwh", "arclight", "emberlight", "bgs", "tonalztic", "seercull", "ayak");
-    private static final Set<String> OUTPUT_FIELDS = Set.of("equipment", "maxHit", "maxAttackRoll", "npcDefRoll", "accuracy", "dps");
-    private static final Set<String> SCALAR_OUTPUT_FIELDS = Set.of("maxHit", "maxAttackRoll", "npcDefRoll", "accuracy", "dps");
+    private static final Set<String> OUTPUT_FIELDS = Set.of("equipment", "maxHit", "maxAttackRoll", "npcDefRoll", "accuracy", "scalarMax", "directMax", "dotMax", "totalMax", "distributionMax", "expectedDirectDamage", "expectedDotDamage", "expectedDamage", "baseAttackSpeed", "expectedAttackSpeed", "normalizedDistribution", "dpt", "dps");
+    private static final Set<String> INTEGER_OUTPUT_FIELDS = Set.of("maxHit", "maxAttackRoll", "npcDefRoll", "scalarMax", "directMax", "dotMax", "totalMax", "distributionMax", "baseAttackSpeed");
+    private static final Set<String> FLOAT_OUTPUT_FIELDS = Set.of("accuracy", "expectedDirectDamage", "expectedDotDamage", "expectedDamage", "expectedAttackSpeed", "dpt", "dps");
 
     private FixtureJsonValidator() {}
 
@@ -65,8 +66,33 @@ final class FixtureJsonValidator {
 
         JsonObject outputs = child(fixture, "outputs", path + ".outputs");
         strict(outputs, path + ".outputs", OUTPUT_FIELDS);
-        for (String field : SCALAR_OUTPUT_FIELDS) finite(outputs, field, path + ".outputs." + field);
+        for (String field : INTEGER_OUTPUT_FIELDS) nonNegative(outputs, field, path + ".outputs." + field);
+        for (String field : FLOAT_OUTPUT_FIELDS) finite(outputs, field, path + ".outputs." + field);
         validateEquipmentOutput(child(outputs, "equipment", path + ".outputs.equipment"), path + ".outputs.equipment");
+        validateDistribution(array(outputs, "normalizedDistribution", path + ".outputs.normalizedDistribution"), path + ".outputs.normalizedDistribution");
+    }
+
+    private static void validateDistribution(JsonArray distribution, String path) {
+        if (distribution.size() == 0) fail(path, "must not be empty");
+        double totalProbability = 0;
+        for (int index = 0; index < distribution.size(); index++) {
+            String outcomePath = path + "[" + index + "]";
+            JsonObject outcome = object(distribution.get(index), outcomePath);
+            strict(outcome, outcomePath, Set.of("probability", "hitsplats"));
+            double probability = finite(outcome, "probability", outcomePath + ".probability");
+            if (probability < 0) fail(outcomePath + ".probability", "must be non-negative");
+            totalProbability += probability;
+            JsonArray hitsplats = array(outcome, "hitsplats", outcomePath + ".hitsplats");
+            if (hitsplats.size() == 0) fail(outcomePath + ".hitsplats", "must not be empty");
+            for (int splatIndex = 0; splatIndex < hitsplats.size(); splatIndex++) {
+                String splatPath = outcomePath + ".hitsplats[" + splatIndex + "]";
+                JsonObject hitsplat = object(hitsplats.get(splatIndex), splatPath);
+                strict(hitsplat, splatPath, Set.of("damage", "accurate"));
+                nonNegative(hitsplat, "damage", splatPath + ".damage");
+                bool(hitsplat, "accurate", splatPath + ".accurate");
+            }
+        }
+        if (!Double.isFinite(totalProbability) || totalProbability <= 0) fail(path, "total probability must be positive and finite");
     }
 
     private static void validateEquipmentOutput(JsonObject equipment, String path) {

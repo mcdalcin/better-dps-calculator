@@ -117,8 +117,8 @@ When new code lands in the Wiki calculator, do not start in this repo. Use this 
 - Reference repository: `https://github.com/weirdgloop/osrs-dps-calc`
 - Sync workspace: `https://github.com/mcdalcin/better-dps-calculator-sync`
 - Synced reference commit: `b6bc098dc0d742b2b763375d2e78e1b611a22070`
-- Deterministic reference fixtures: 146
-- Last verified: 2026-07-10
+- Deterministic reference fixtures: 150
+- Last verified: 2026-07-12
 
 This milestone verifies the included deterministic equipment and distribution coverage; it does not claim complete calculator parity. Expanded seeded fuzz replay and the remaining live/unimplemented areas listed in [SYNC_STATUS.md](SYNC_STATUS.md) are still open.
 
